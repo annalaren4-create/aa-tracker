@@ -4,7 +4,7 @@ import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, overUnder } from '../utils/calculations'
 import LogFlightModal from './modals/LogFlightModal'
 
-const COLS = '58px 1fr 52px 50px 50px 46px 52px 52px 50px 58px 88px 64px'
+const COLS = '58px 1fr 52px 56px 56px 52px 56px 52px 52px 62px 88px 64px'
 
 export default function StudentDetail({
   student, logs, instructors, isInstructor, onLogFlight, onUpdateStudent, onBack, calcProgress,
@@ -105,6 +105,11 @@ export default function StudentDetail({
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
               </div>
+              {progress.projected != null && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  proj. <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projected.toLocaleString()}</span> at target hrs
+                </div>
+              )}
             </StatCard>
           )}
 
@@ -140,11 +145,11 @@ export default function StudentDetail({
             display: 'grid', gridTemplateColumns: COLS, gap: 4,
             padding: '7px 10px', fontSize: 11, color: '#6b7280', fontWeight: 500,
             borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
-            minWidth: 860,
+            minWidth: 880,
           }}>
             <span>Lesson</span>
             <span>Objectives</span>
-            <span style={{ textAlign: 'right' }}>Target</span>
+            <span style={{ textAlign: 'right' }}>Flt Tgt</span>
             <span style={{ textAlign: 'right' }}>Dual</span>
             <span style={{ textAlign: 'right' }}>Solo</span>
             <span style={{ textAlign: 'right' }}>XC</span>
@@ -154,6 +159,14 @@ export default function StudentDetail({
             <span style={{ textAlign: 'right' }}>Ground</span>
             <span style={{ textAlign: 'center' }}>Date</span>
             <span style={{ textAlign: 'center' }}>Status</span>
+          </div>
+          {/* Legend: ground column shows recommended hours in blue */}
+          <div style={{ padding: '3px 10px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 9, color: '#9ca3af', display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span>Ground column:</span>
+            <span style={{ fontWeight: 600, color: '#111827' }}>logged</span>
+            <span>/</span>
+            <span style={{ fontWeight: 600, color: '#2d6ab4' }}>rec. target</span>
+            <span>· turns green when met</span>
           </div>
 
           {course.lessons.map((lesson) => {
@@ -165,10 +178,10 @@ export default function StudentDetail({
                 key={lesson.id}
                 style={{
                   display: 'grid', gridTemplateColumns: COLS, gap: 4,
-                  alignItems: 'center', padding: '7px 10px',
+                  alignItems: 'center', padding: '6px 10px',
                   borderBottom: '1px solid #f3f4f6', fontSize: 12, cursor: 'pointer',
                   background: lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
-                  minWidth: 860,
+                  minWidth: 880,
                 }}
                 onClick={() => isInstructor && setLogLesson(lesson)}
               >
@@ -181,14 +194,15 @@ export default function StudentDetail({
                   )}
                 </div>
                 <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{lesson.o}</span>
-                <span style={{ textAlign: 'right', fontWeight: 500 }}>{lesson.t > 0 ? `${parseFloat(lesson.t).toFixed(1)}` : '—'}</span>
+                <span style={{ textAlign: 'right', fontWeight: 500 }}>{lesson.t > 0 ? parseFloat(lesson.t).toFixed(1) : '—'}</span>
+
                 <span style={{ textAlign: 'right' }}>{fmt(lg.dual   || 0)}</span>
                 <span style={{ textAlign: 'right' }}>{fmt(lg.solo   || 0)}</span>
                 <span style={{ textAlign: 'right' }}>{fmt(lg.xc     || 0)}</span>
                 <span style={{ textAlign: 'right' }}>{fmt(lg.sim    || 0)}</span>
                 <span style={{ textAlign: 'right' }}>{fmt(lg.hood   || 0)}</span>
                 <span style={{ textAlign: 'right' }}>{fmt(lg.night  || 0)}</span>
-                <span style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(lg.ground || 0)}</span>
+                <LogCell logged={lg.ground} rec={lesson.g} />
 
                 {/* Date cell — inline editable for instructors */}
                 <span
@@ -233,7 +247,7 @@ export default function StudentDetail({
             display: 'grid', gridTemplateColumns: COLS, gap: 4,
             padding: '8px 10px', background: '#f8fafc',
             fontSize: 12, fontWeight: 600, borderTop: '2px solid #e5e7eb',
-            minWidth: 860,
+            minWidth: 880,
           }}>
             <span>Totals</span>
             <span />
@@ -244,7 +258,7 @@ export default function StudentDetail({
             <span style={{ textAlign: 'right' }}>{fmt(totSim)}</span>
             <span style={{ textAlign: 'right' }}>{fmt(totHood)}</span>
             <span style={{ textAlign: 'right' }}>{fmt(totNight)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totGround)}</span>
+            <TotalCell logged={totGround} rec={course.lessons.reduce((s,l)=>s+(l.g||0),0)} />
             <span />
             <span style={{ textAlign: 'center' }}>{progress.completed}/{progress.total}</span>
           </div>
@@ -270,6 +284,46 @@ function StatCard({ label, value, valueColor, valueSize = 20, children }) {
       <div className="stat-label">{label}</div>
       <div className="stat-val" style={{ fontSize: valueSize, color: valueColor }}>{value}</div>
       {children}
+    </div>
+  )
+}
+
+/**
+ * Ground column cell — shows logged hours with the recommended target below in blue.
+ * Turns green once logged meets or exceeds the recommendation.
+ */
+function LogCell({ logged, rec }) {
+  const val = logged || 0
+  const hasRec = rec > 0
+  const met = hasRec && val >= rec
+  return (
+    <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+      <div style={{ fontSize: 12, color: val > 0 ? '#111827' : '#d1d5db' }}>
+        {val > 0 ? val.toFixed(1) : '—'}
+      </div>
+      {hasRec && (
+        <div style={{ fontSize: 9, fontWeight: 600, color: met ? '#16a34a' : '#2d6ab4' }}>
+          {rec.toFixed(1)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Ground totals cell — shows sum logged and course-wide recommended total.
+ */
+function TotalCell({ logged, rec }) {
+  const hasRec = rec > 0
+  const met = hasRec && logged >= rec
+  return (
+    <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+      <div style={{ fontSize: 12 }}>{logged > 0 ? logged.toFixed(1) : '—'}</div>
+      {hasRec && (
+        <div style={{ fontSize: 9, fontWeight: 600, color: met ? '#16a34a' : '#2d6ab4' }}>
+          {rec.toFixed(1)} rec
+        </div>
+      )}
     </div>
   )
 }

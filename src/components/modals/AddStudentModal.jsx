@@ -16,7 +16,9 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
   const [customSecondary, setCustomSecondary] = useState(false)
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-  const hasInstructors = instructors.length > 0
+  // Show only instructors at the student's current base
+  const baseInstructors = instructors.filter((i) => !i.base || i.base === form.base)
+  const hasInstructors = baseInstructors.length > 0
 
   const submit = () => {
     if (!form.name.trim()) return alert('Student name is required')
@@ -55,7 +57,11 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
               </div>
               <div>
                 <label>Base location</label>
-                <select value={form.base} onChange={(e) => set('base', e.target.value)}>
+                <select value={form.base} onChange={(e) => {
+                  set('base', e.target.value)
+                  set('primaryInstructor', '')
+                  set('secondaryInstructor', '')
+                }}>
                   {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
                 </select>
               </div>
@@ -85,18 +91,11 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
 
             {/* Primary instructor */}
             <div>
-              <label>
-                Primary instructor ✱
-                {!hasInstructors && (
-                  <span style={{ color: '#6b7280', fontWeight: 400 }}>
-                    {' — '}use the "Instructors" button in the dashboard to build a dropdown roster
-                  </span>
-                )}
-              </label>
+              <label>Primary instructor ✱</label>
               <InstructorSelect
                 value={form.primaryInstructor}
                 onChange={(v) => set('primaryInstructor', v)}
-                instructors={instructors}
+                instructors={baseInstructors}
                 custom={customPrimary}
                 setCustom={setCustomPrimary}
               />
@@ -108,7 +107,7 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
               <InstructorSelect
                 value={form.secondaryInstructor}
                 onChange={(v) => set('secondaryInstructor', v)}
-                instructors={instructors}
+                instructors={baseInstructors}
                 custom={customSecondary}
                 setCustom={setCustomSecondary}
               />

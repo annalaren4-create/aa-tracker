@@ -1,4 +1,4 @@
-import { AIRCRAFT_RATES, LU_FLAT_RATES, SIM_RATE, instrRate } from '../data/constants'
+import { AIRCRAFT_RATES, LU_FLAT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, instrRate } from '../data/constants'
 import { COURSES } from '../data/courses'
 
 /**
@@ -7,9 +7,46 @@ import { COURSES } from '../data/courses'
  * @param {object} logs  — keyed by studentId → lessonId → logData
  * @returns {object}
  */
+/**
+ * Billing cost for a single lesson given actual logged hours.
+ * Handles Redbird-only lessons (sm but no d) — any mistakenly-logged
+ * dual hours are rerouted to sim billing so aircraft rate is never charged
+ * for a simulator session.
+ */
+function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student) {
+  const isCheck  = lesson.sc || lesson.pc
+  const flightIr = lesson.fsc ? FSC_INSTR_RATE : instrRate(student.base, isCheck)
+
+  // Redbird-only: course has sm but no d → no airplane involved
+  const redbirdOnly  = !lesson.d && (lesson.sm || 0) > 0
+  const effDual = redbirdOnly ? 0       : dual
+  const effSim  = redbirdOnly ? sim + dual : sim
+
+  const flightTime = effDual + solo
+  let cost = 0
+  cost += flightTime * aircraftRate   // aircraft (dual + solo, never sim)
+  cost += effDual    * flightIr       // instructor on dual flight
+  cost += effSim     * SIM_RATE       // Redbird device — flat $90/hr
+  cost += effSim     * flightIr       // instructor present during sim
+  cost += ground     * GROUND_RATE    // ground instruction — flat $100/hr
+  return { cost, flightTime, effSim }
+}
+
+/**
+ * Expected cost for an unstarted lesson at its target hours.
+ */
+function lessonExpectedCost(lesson, aircraftRate, student) {
+  const d  = lesson.d  || 0
+  const s  = lesson.s  || 0
+  const sm = lesson.sm || 0
+  const g  = lesson.g  || 0
+  const { cost } = lessonCost(lesson, d, s, sm, g, aircraftRate, student)
+  return cost
+}
+
 export function calcProgress(student, logs) {
   const course = COURSES[student.course]
-  if (!course) return { pct: 0, flown: 0, cost: 0, completed: 0, total: 0, flatRate: null, targetTotal: 0 }
+  if (!course) return { pct: 0, flown: 0, cost: 0, projected: 0, completed: 0, total: 0, flatRate: null, targetTotal: 0 }
 
   const sLogs = logs[student.id] || {}
   const aircraftRate = AIRCRAFT_RATES[student.aircraft] || 0
@@ -19,32 +56,39 @@ export function calcProgress(student, logs) {
     const lg = sLogs[lesson.id]
     if (!lg) return
 
-    const dual    = lg.dual    || 0
-    const solo    = lg.solo    || 0
-    const sim     = lg.sim     || 0
-    const ground  = lg.ground  || 0
-    const flightTime = dual + solo
-    const isCheck = lesson.sc || lesson.pc
-    const ir = instrRate(student.base, isCheck)
-
-    cost += flightTime * aircraftRate  // aircraft time (dual + solo)
-    cost += dual * ir                  // instructor rate for dual flight time
-    cost += sim * SIM_RATE             // sim device (Redbird)
-    cost += sim * ir                   // instructor present during sim sessions
-    cost += ground * ir                // ground instruction
-
-    flown += flightTime + sim
+    const { cost: lc, flightTime, effSim } = lessonCost(
+      lesson,
+      lg.dual   || 0,
+      lg.solo   || 0,
+      lg.sim    || 0,
+      lg.ground || 0,
+      aircraftRate,
+      student,
+    )
+    cost  += lc
+    flown += flightTime + effSim
     if (lg.completed) completed++
   })
 
-  const total = course.lessons.length
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+  // Projected total = actual cost so far + expected cost of not-yet-started lessons
+  // This avoids the "early expensive lessons inflate the projection" problem of
+  // the naive (cost/pct)*100 formula.
+  let remainingCost = 0
+  course.lessons.forEach((lesson) => {
+    if (sLogs[lesson.id]) return   // already started — captured in actual cost
+    remainingCost += lessonExpectedCost(lesson, aircraftRate, student)
+  })
+
+  const total    = course.lessons.length
+  const pct      = total > 0 ? Math.round((completed / total) * 100) : 0
   const flatRate = student.school === 'Liberty University' ? LU_FLAT_RATES[student.course] : null
+  const projected = Math.round(cost + remainingCost)
 
   return {
     pct,
     flown: parseFloat(flown.toFixed(1)),
     cost: Math.round(cost),
+    projected,
     completed,
     total,
     flatRate,

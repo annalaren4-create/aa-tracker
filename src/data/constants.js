@@ -40,10 +40,17 @@ export const LU_FLAT_RATES = {
 /** Simulator flat rate (all locations) */
 export const SIM_RATE = 90
 
+/** Ground instruction rate — flat $100/hr all locations */
+export const GROUND_RATE = 100
+
+/** Final Stage Check instructor rate — flat $145/hr all locations */
+export const FSC_INSTR_RATE = 145
+
 /**
- * Instructor hourly rate by location and check type
+ * Instructor hourly rate by location and check type (flight & sim only)
  * KHEF / KJYO: line $100, check $110
  * KRMN / KHWY / KOKV: line $95, check $105
+ * Final Stage Check lessons use FSC_INSTR_RATE ($145) instead — see calculations.js
  */
 export const instrRate = (base, isCheck = false) => {
   const isHefJyo = ['KHEF', 'KJYO'].includes(base)

@@ -1,9 +1,17 @@
-import { lsGet, lsSet } from './storage'
+import { lsGet, lsSet, uid } from './storage'
 
 // Simple obfuscation for a local school intranet app — not production-grade auth
 const encode = (s) => btoa(s)
 
-const DEFAULT = [{ username: 'admin', hash: encode('aviation2026'), role: 'admin' }]
+const DEFAULT = [{
+  id: 'default-admin',
+  name: 'Admin',
+  username: 'admin',
+  hash: encode('aviation2026'),
+  role: 'chief',
+  roleLabel: 'Chief Instructor',
+  studentId: null,
+}]
 
 export function getAccounts() {
   return lsGet('accounts') || DEFAULT
@@ -14,11 +22,14 @@ export function checkLogin(username, password) {
   return accounts.find((a) => a.username === username && a.hash === encode(password)) || null
 }
 
-export function addAccount(username, password) {
+export function registerAccount({ name, username, password, role, roleLabel, studentId = null }) {
   const accounts = getAccounts()
-  if (accounts.find((a) => a.username === username)) return false
-  lsSet('accounts', [...accounts, { username, hash: encode(password), role: 'instructor' }])
-  return true
+  if (accounts.find((a) => a.username.toLowerCase() === username.toLowerCase())) {
+    return { error: 'That username is already taken — try another.' }
+  }
+  const account = { id: uid(), name, username, hash: encode(password), role, roleLabel, studentId }
+  lsSet('accounts', [...accounts, account])
+  return { account }
 }
 
 export function deleteAccount(username) {

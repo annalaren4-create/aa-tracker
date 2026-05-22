@@ -9,6 +9,7 @@ export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent,
   onAddInstructor, onDeleteInstructor, calcProgress,
+  account, onSignOut,
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
@@ -20,10 +21,13 @@ export default function InstructorDash({
       {/* Header */}
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn btn-sm btn-ghost" onClick={() => setView('home')}>← Home</button>
-          <h1>Instructor dashboard</h1>
+          <span className="logo-badge">Aviation Adventures</span>
+          <div>
+            <h1>Instructor Dashboard</h1>
+            {account && <small style={{ opacity: .8 }}>{account.name} · {account.roleLabel}</small>}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>
             👥 Instructors
           </button>
@@ -34,6 +38,11 @@ export default function InstructorDash({
           >
             + Add student
           </button>
+          {onSignOut && (
+            <button className="btn btn-sm btn-ghost" onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
         </div>
       </div>
 
@@ -89,6 +98,7 @@ export default function InstructorDash({
           onAdd={onAddInstructor}
           onDelete={onDeleteInstructor}
           onClose={() => setShowManageInstr(false)}
+          activeLocation={activeLocation}
         />
       )}
     </div>
@@ -145,8 +155,8 @@ function StudentCard({ student, progress: p, onView, onDelete }) {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6 }}>
-        <button className="btn btn-sm" onClick={onView}>👁</button>
-        <button className="btn btn-sm btn-danger" onClick={onDelete}>🗑</button>
+        <button className="btn btn-sm" onClick={onView}>View</button>
+        <button className="btn btn-sm btn-danger" onClick={onDelete}>Delete</button>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-export default function Home({ setView, studentCount }) {
+export default function Home({ onSignIn, onRegister }) {
   return (
     <div>
       <div className="header">
@@ -9,38 +9,34 @@ export default function Home({ setView, studentCount }) {
         <small>KHEF · KRMN · KHWY · KOKV · KJYO</small>
       </div>
 
-      <div style={{ padding: '40px 20px', maxWidth: 520, margin: '0 auto' }}>
-        <p style={{ color: '#6b7280', marginBottom: 24, textAlign: 'center', fontSize: 14 }}>
-          Select your role to continue
-        </p>
+      <div style={{ padding: '60px 20px', maxWidth: 440, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <span style={{ fontSize: 52 }}>✈️</span>
+          <h2 style={{ marginTop: 12, fontSize: 22, fontWeight: 600 }}>Welcome back</h2>
+          <p style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>
+            Part 141 · Liberty University · Purdue Global · California Aeronautics University
+          </p>
+        </div>
 
-        <div className="grid2" style={{ gap: 20 }}>
-          <div
-            className="home-card"
-            onClick={() => setView('instructor-login')}
+        <div style={{ display: 'grid', gap: 12 }}>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', padding: '12px 14px', fontSize: 15 }}
+            onClick={onSignIn}
           >
-            <span className="icon">🧑‍✈️</span>
-            <h2 style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Instructor portal</h2>
-            <p style={{ fontSize: 13, color: '#6b7280' }}>
-              Manage all {studentCount} students, log flights, track budgets
-            </p>
-          </div>
-
-          <div
-            className="home-card"
-            onClick={() => setView('student-login')}
+            Sign in
+          </button>
+          <button
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center', padding: '12px 14px', fontSize: 15 }}
+            onClick={onRegister}
           >
-            <span className="icon">📋</span>
-            <h2 style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Student portal</h2>
-            <p style={{ fontSize: 13, color: '#6b7280' }}>
-              View your personal course progress and syllabus
-            </p>
-          </div>
+            Create account
+          </button>
         </div>
 
         <div className="info-box" style={{ marginTop: 24 }}>
-          ✈️&nbsp; Aircraft rates effective 4/1/2026 · Part 141 · Liberty University, Purdue Global,
-          California Aeronautics University
+          ✈️&nbsp; Aircraft rates effective 4/1/2026 · New to the system? Click <strong>Create account</strong> to get started.
         </div>
       </div>
     </div>
