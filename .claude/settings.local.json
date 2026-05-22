@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/annaherrington/Downloads/aa-tracker/.claude)",
+      "Bash(python3 '/Users/annaherrington/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/8316c3cb-45dc-47dd-a19b-56a5b222032e/36f329e7-238b-47dd-8f8c-865da29b3bf7/skills/docx/scripts/office/unpack.py' '/Users/annaherrington/Desktop/alloted fund for each course.docx' /tmp/docx-unpack/)",
+      "Read(//private/tmp/**)",
+      "Bash(cp \"/Users/annaherrington/Desktop/alloted fund for each course.docx\" fund.docx)",
+      "Bash(unzip -o fund.docx word/document.xml -d docx-raw)",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}
