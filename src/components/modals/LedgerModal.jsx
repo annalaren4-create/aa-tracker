@@ -1,5 +1,5 @@
-import { COURSES } from '../../data/courses'
-import { AIRCRAFT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, LU_FLAT_RATES, instrRate } from '../../data/constants'
+import { COURSES, getCourseDef, syllabusVersionFor } from '../../data/courses'
+import { AIRCRAFT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, LU_FLAT_RATES, LU_STANDARD_AIRCRAFT, instrRate } from '../../data/constants'
 import { repeatKeysFor } from '../../utils/calculations'
 
 /**
@@ -7,10 +7,13 @@ import { repeatKeysFor } from '../../utils/calculations'
  * ledger of every logged flight with the math behind each entry so a chief or
  * instructor can answer "where did that hour come from" or "what added up to $X".
  */
-export default function LedgerModal({ student, logs, instructors, mode = 'hours', onClose }) {
-  const course = COURSES[student.course]
-  const sLogs  = logs[student.id] || {}
-  const aircraftRate = AIRCRAFT_RATES[student.aircraft] || 0
+export default function LedgerModal({ student, logs, instructors, mode = 'hours', viewCourse, onClose }) {
+  const activeCourse = viewCourse || student.course
+  const ledgerVersion = activeCourse !== student.course ? syllabusVersionFor(student, activeCourse) : undefined
+  const course = getCourseDef(activeCourse, ledgerVersion)
+  // Logs are namespaced by course: logs[studentId][course][lessonId]
+  const sLogs  = (logs[student.id] || {})[activeCourse] || {}
+  const defaultAircraftRate = AIRCRAFT_RATES[student.aircraft] || 0
   const chargeSimDevice = !course?.simUnlimited
   const rateByName = {}
   instructors.forEach((i) => { if (i.lineRate) rateByName[i.name] = i.lineRate })
@@ -29,20 +32,36 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
       const solo = lg.solo || 0
       const sim  = lg.sim  || 0
       const ground = lg.ground || 0
-      const aircraftCost   = (dual + solo) * aircraftRate
+      // Per-log aircraft override; falls back to the student's default.
+      const aircraftUsed = lg.aircraft || student.aircraft
+      const aircraftRate = AIRCRAFT_RATES[aircraftUsed] || defaultAircraftRate
+      // Liberty pays aircraft at the "least expensive" rate for the course.
+      // Anything extra (S model vs L/P, etc.) is an OOP aircraft surcharge.
+      const isLiberty = student.school === 'Liberty University'
+      const standardAircraft = isLiberty ? LU_STANDARD_AIRCRAFT[activeCourse] : null
+      const standardAircraftRate = standardAircraft ? AIRCRAFT_RATES[standardAircraft] : null
+      const luAircraftRate = (standardAircraftRate != null && standardAircraftRate < aircraftRate)
+        ? standardAircraftRate
+        : aircraftRate
+      const flightHours = dual + solo
+      const aircraftCost      = flightHours * luAircraftRate
+      const aircraftSurcharge = flightHours * Math.max(0, aircraftRate - luAircraftRate)
       const instructorCost = dual * flightIr + sim * flightIr
       const simDeviceCost  = chargeSimDevice ? sim * SIM_RATE : 0
       const groundCost     = ground * groundRate
-      const totalCost      = aircraftCost + instructorCost + simDeviceCost + groundCost
+      const luLessonCost   = aircraftCost + instructorCost + simDeviceCost + groundCost
+      const totalCost      = luLessonCost + aircraftSurcharge
       const totalHours     = dual + solo + sim
       rows.push({
         key,
         lessonId: lesson.id,
         date: lg.date || '',
         instructor: ir || '—',
+        aircraft: aircraftUsed || '—',
         repeatIdx,
         dual, solo, sim, ground,
-        aircraftCost, instructorCost, simDeviceCost, groundCost, totalCost,
+        aircraftCost, aircraftSurcharge, instructorCost, simDeviceCost, groundCost,
+        luLessonCost, totalCost,
         totalHours,
         completed: !!lg.completed,
         incomplete: !!lg.incomplete,
@@ -73,7 +92,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
     running = course?.enrollmentFee || 0
   } else if (mode === 'balance') {
     running = (student.school === 'Liberty University' && course)
-      ? (LU_FLAT_RATES[student.course] || 0)
+      ? (LU_FLAT_RATES[activeCourse] || 0)
       : 0
   }
 
@@ -84,7 +103,10 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 500 }}>{title}</h2>
             <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-              {student.name} · {student.course} · {student.aircraft}
+              {student.name} · {activeCourse} · {student.aircraft}
+              {viewCourse && viewCourse !== student.course && (
+                <span style={{ marginLeft: 6, color: '#92400e', fontWeight: 600 }}>· past course</span>
+              )}
             </div>
           </div>
           <button className="btn btn-sm" onClick={onClose}>✕</button>
@@ -101,6 +123,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
                   <th style={th}>Date</th>
                   <th style={th}>Lesson</th>
+                  <th style={th}>Aircraft</th>
                   <th style={th}>Instructor</th>
                   {mode === 'hours' && (<>
                     <th style={thRight}>Dual</th>
@@ -114,6 +137,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                     <th style={thRight}>Instr</th>
                     <th style={thRight}>Sim dev</th>
                     <th style={thRight}>Ground</th>
+                    <th style={thRight} title="Out-of-pocket aircraft surcharge (e.g. S model vs L/P)">+OOP</th>
                     <th style={thRight}>Lesson $</th>
                     {mode === 'cost' && <th style={thRight}>Running $</th>}
                     {mode === 'balance' && <th style={thRight}>Balance</th>}
@@ -122,8 +146,11 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  if (mode === 'cost') running += r.totalCost
-                  if (mode === 'balance') running -= r.totalCost
+                  // Running cost and Balance only reflect what LU is billed
+                  // (i.e. excluding the OOP aircraft surcharge — that lives in
+                  // its own column).
+                  if (mode === 'cost') running += r.luLessonCost
+                  if (mode === 'balance') running -= r.luLessonCost
                   return (
                     <tr key={r.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={td}>{r.date || '—'}</td>
@@ -132,6 +159,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                         {r.lessonId}
                         {r.repeatIdx !== null && <span style={{ color: '#9ca3af', fontSize: 10 }}> (repeat {r.repeatIdx + 1})</span>}
                       </td>
+                      <td style={{ ...td, fontSize: 11, color: r.aircraftSurcharge > 0 ? '#b45309' : '#374151' }}>{r.aircraft}</td>
                       <td style={td}>{r.instructor}</td>
                       {mode === 'hours' && (<>
                         <td style={tdRight}>{r.dual > 0 ? r.dual.toFixed(1) : '—'}</td>
@@ -145,6 +173,9 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                         <td style={tdRight}>{r.instructorCost > 0 ? `$${r.instructorCost.toFixed(0)}` : '—'}</td>
                         <td style={tdRight}>{r.simDeviceCost > 0 ? `$${r.simDeviceCost.toFixed(0)}` : '—'}</td>
                         <td style={tdRight}>{r.groundCost > 0 ? `$${r.groundCost.toFixed(0)}` : '—'}</td>
+                        <td style={{ ...tdRight, color: r.aircraftSurcharge > 0 ? '#b45309' : '#d1d5db', fontWeight: r.aircraftSurcharge > 0 ? 600 : 400 }}>
+                          {r.aircraftSurcharge > 0 ? `+$${r.aircraftSurcharge.toFixed(0)}` : '—'}
+                        </td>
                         <td style={{ ...tdRight, fontWeight: 600 }}>${r.totalCost.toFixed(0)}</td>
                         {mode === 'cost' && <td style={{ ...tdRight, color: '#1a3a5c', fontWeight: 600 }}>${Math.round(running).toLocaleString()}</td>}
                         {mode === 'balance' && (

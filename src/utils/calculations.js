@@ -1,5 +1,5 @@
-import { AIRCRAFT_RATES, LU_FLAT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, instrRate } from '../data/constants'
-import { COURSES } from '../data/courses'
+import { AIRCRAFT_RATES, LU_FLAT_RATES, LU_FUNDED_REPEATS_PER_COURSE, LU_STANDARD_AIRCRAFT, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, instrRate } from '../data/constants'
+import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 
 /**
  * Repeat-attempt log keys look like `<lessonId>__r1`, `<lessonId>__r2`, etc.
@@ -8,6 +8,20 @@ import { COURSES } from '../data/courses'
 export function repeatKeysFor(sLogs, lessonId) {
   const prefix = `${lessonId}__r`
   return Object.keys(sLogs).filter((k) => k.startsWith(prefix)).sort()
+}
+
+/**
+ * Split-continuation log keys look like `<lessonId>__s1`, `__s2`, etc.
+ * These are subsequent sessions of the SAME lesson — Liberty-funded just like
+ * the original (not repeats, not OOP). Hours accumulate to the lesson total.
+ */
+export function splitKeysFor(sLogs, lessonId) {
+  const prefix = `${lessonId}__s`
+  return Object.keys(sLogs).filter((k) => k.startsWith(prefix)).sort((a, b) => {
+    const na = parseInt(a.split('__s')[1], 10) || 0
+    const nb = parseInt(b.split('__s')[1], 10) || 0
+    return na - nb
+  })
 }
 
 /**
@@ -21,7 +35,7 @@ export function repeatKeysFor(sLogs, lessonId) {
  * Redbird-only lessons (sm but no d) ignore any logged dual hours so
  * stale data from older lesson definitions can't pollute the cost.
  */
-function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, chargeSimDevice = true, rateOverrides = {}, instructorLineRate) {
+function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, chargeSimDevice = true, rateOverrides = {}, instructorLineRate, standardAircraftRate) {
   // Rate priority for the non-FSC line rate (highest wins):
   //   1. Specific instructor's lineRate (e.g., chiefs/asst chiefs at $110)
   //   2. Course-level instructorRate override (e.g., MEI at $110)
@@ -38,33 +52,59 @@ function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, char
   const effSim  = sim
 
   const flightTime = effDual + solo
+  // Liberty pays the aircraft at the "least expensive approved" rate for the
+  // course. If the student flies a more expensive aircraft, the per-hour delta
+  // is OOP. Non-Liberty students just pay the full aircraft rate at LU bucket
+  // (oopAircraftSurcharge stays 0 because standardAircraftRate is undefined).
+  const luAircraftRate = (standardAircraftRate != null && standardAircraftRate < aircraftRate)
+    ? standardAircraftRate
+    : aircraftRate
+  const oopAircraftSurcharge = flightTime * Math.max(0, aircraftRate - luAircraftRate)
+
   let cost = 0
-  cost += flightTime * aircraftRate                    // aircraft (dual + solo, never sim)
+  cost += flightTime * luAircraftRate                  // aircraft at LU-covered rate
   cost += effDual    * flightIr                        // instructor on dual flight
   if (chargeSimDevice) cost += effSim * SIM_RATE       // Redbird device — skipped when course has unlimited-sim enrollment fee
   cost += effSim     * flightIr                        // instructor present for sim (Part 141 sims are dual)
   cost += ground     * groundRate                      // ground instruction
-  return { cost, flightTime, effSim }
+  return { cost, oopAircraftSurcharge, flightTime, effSim }
 }
 
 /**
  * Expected cost for an unstarted lesson at its target hours.
  */
-function lessonExpectedCost(lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate) {
+function lessonExpectedCost(lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate) {
   const d  = lesson.d  || 0
   const s  = lesson.s  || 0
   const sm = lesson.sm || 0
   const g  = lesson.g  || 0
-  const { cost } = lessonCost(lesson, d, s, sm, g, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate)
-  return cost
+  const { cost, oopAircraftSurcharge } = lessonCost(lesson, d, s, sm, g, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate)
+  // For projections we include the surcharge in the projected total spend (it
+  // still hits the student, just under the OOP bucket).
+  return { luCost: cost, oopCost: oopAircraftSurcharge }
 }
 
-export function calcProgress(student, logs, instructors = []) {
-  const course = COURSES[student.course]
+export function calcProgress(student, logs, instructors = [], courseOverride) {
+  // courseOverride lets the caller view a historical course's progress without
+  // changing the student's current course. Defaults to the active course.
+  const activeCourse = courseOverride || student.course
+  // Historical courses may have been taken under an older syllabus version;
+  // pull that version from courseHistory so lessons / targets reflect what
+  // the student actually trained against, not the current syllabus.
+  const syllabusVersion = courseOverride ? syllabusVersionFor(student, activeCourse) : undefined
+  const course = getCourseDef(activeCourse, syllabusVersion)
   if (!course) return { pct: 0, flown: 0, cost: 0, projected: 0, completed: 0, total: 0, flatRate: null, targetTotal: 0 }
 
-  const sLogs = logs[student.id] || {}
+  // New log shape: logs[studentId][course][lessonId]. Old callers pass the
+  // current-course logs through automatically since student.course == activeCourse.
+  const sLogs = (logs[student.id] || {})[activeCourse] || {}
   const aircraftRate = AIRCRAFT_RATES[student.aircraft] || 0
+  // Liberty pays the aircraft at the "least expensive approved" rate for the
+  // course. If the student flies a pricier aircraft, the delta is OOP.
+  // Non-Liberty students have no surcharge concept.
+  const isLiberty = student.school === 'Liberty University'
+  const standardAircraft = isLiberty ? LU_STANDARD_AIRCRAFT[activeCourse] : null
+  const standardAircraftRate = standardAircraft ? AIRCRAFT_RATES[standardAircraft] : null
   const chargeSimDevice = !course.simUnlimited
   const enrollmentFee = course.enrollmentFee || 0
   const rateOverrides = { flight: course.instructorRate, ground: course.groundRate }
@@ -81,15 +121,22 @@ export function calcProgress(student, logs, instructors = []) {
   // `oopCost` = student's out-of-pocket charges (do NOT count toward LU balance).
   let flown = 0, cost = enrollmentFee, oopCost = 0, completed = 0
 
-  // Determine the first valid Liberty-funded repeat in the course (left-to-right
-  // through the syllabus). Liberty funds at most ONE repeat per course, and that
-  // repeat may never be on a stage check, final stage check, or progress check.
-  let firstLibRepeatId = null
+  // How many funded repeats Liberty allows for this course. Defaults to the
+  // current policy (LU_FUNDED_REPEATS_PER_COURSE = 1) but historical course
+  // history entries can override via `libRepeatsAllowed` (e.g. 2 for last
+  // semester before Liberty tightened the rule).
+  const histEntry = student.courseHistory?.find((h) => h.course === activeCourse)
+  const libRepeatsAllowed = histEntry?.libRepeatsAllowed ?? LU_FUNDED_REPEATS_PER_COURSE
+
+  // Determine the FIRST N valid Liberty-funded repeats in the course (left-to-
+  // right through the syllabus). Each one may not be on a stage / progress /
+  // final stage check (those repeats are always OOP).
+  const libFundedRepeatIds = []
   for (const lesson of course.lessons) {
+    if (libFundedRepeatIds.length >= libRepeatsAllowed) break
     const lg = sLogs[lesson.id]
     if (lg?.repeatedLib && !lesson.sc && !lesson.fsc && !lesson.pc) {
-      firstLibRepeatId = lesson.id
-      break
+      libFundedRepeatIds.push(lesson.id)
     }
   }
 
@@ -100,7 +147,7 @@ export function calcProgress(student, logs, instructors = []) {
     const parent = sLogs[lesson.id] || {}
     if (parent.repeatedOop) return true                          // explicitly OOP
     if (parent.repeatedLib && (lesson.sc || lesson.fsc || lesson.pc)) return true  // policy violation
-    if (parent.repeatedLib && lesson.id !== firstLibRepeatId) return true          // 2nd+ Lib lesson → OOP
+    if (parent.repeatedLib && !libFundedRepeatIds.includes(lesson.id)) return true // past allowance → OOP
     if (parent.repeatedLib && repeatIndex > 0) return true                         // 2nd+ repeat within same lesson → OOP
     return false
   }
@@ -117,56 +164,91 @@ export function calcProgress(student, logs, instructors = []) {
   const addLessonLog = (lesson, lg, { countCompletion, isOop }) => {
     if (!isStarted(lg)) return
     const loggedInstrRate = rateByName[lg.instructor]
-    const { cost: lc, flightTime, effSim } = lessonCost(
+    // Per-log aircraft override — students can mix-and-match aircraft across
+    // lessons (e.g. one flight in C-172-S, next in C-172-L-P). Falls back to
+    // the student's default aircraft when not set on the log.
+    const logAircraftRate = lg.aircraft && AIRCRAFT_RATES[lg.aircraft]
+      ? AIRCRAFT_RATES[lg.aircraft]
+      : aircraftRate
+    const { cost: lc, oopAircraftSurcharge, flightTime, effSim } = lessonCost(
       lesson,
       lg.dual   || 0,
       lg.solo   || 0,
       lg.sim    || 0,
       lg.ground || 0,
-      aircraftRate,
+      logAircraftRate,
       student,
       chargeSimDevice,
       rateOverrides,
       loggedInstrRate,
+      standardAircraftRate,
     )
     if (isOop) oopCost += lc
     else       cost    += lc
+    // Aircraft surcharge (S model vs L/P, etc.) is always OOP — even on a
+    // Liberty-covered first attempt — because LU only funds the standard rate.
+    oopCost += oopAircraftSurcharge
     flown += flightTime + effSim
     if (countCompletion && lg.completed) completed++
   }
 
   course.lessons.forEach((lesson) => {
-    // The original (first) attempt is always Liberty-funded.
-    addLessonLog(lesson, sLogs[lesson.id], { countCompletion: true, isOop: false })
+    // The original (first) attempt is normally Liberty-funded, unless the log
+    // is explicitly marked `paidOop` (e.g. a final stage check the student paid
+    // out of pocket because LU's allowance was exhausted).
+    const origLg = sLogs[lesson.id]
+    addLessonLog(lesson, origLg, { countCompletion: true, isOop: !!origLg?.paidOop })
+    // Split continuations: subsequent sessions of the SAME lesson. Always
+    // Liberty-funded; hours accumulate toward the lesson total.
+    splitKeysFor(sLogs, lesson.id).forEach((sk) => {
+      const slg = sLogs[sk]
+      addLessonLog(lesson, slg, { countCompletion: false, isOop: !!slg?.paidOop })
+    })
     // Repeat attempts: only the FIRST repeat of the FIRST eligible lesson is
-    // Liberty-funded; everything else is OOP.
-    repeatKeysFor(sLogs, lesson.id).forEach((rk, idx) =>
-      addLessonLog(lesson, sLogs[rk], { countCompletion: false, isOop: repeatIsOop(lesson, idx) })
-    )
+    // Liberty-funded; everything else is OOP. A repeat can also be explicitly
+    // marked `paidOop` for absolute clarity.
+    repeatKeysFor(sLogs, lesson.id).forEach((rk, idx) => {
+      const rlg = sLogs[rk]
+      addLessonLog(lesson, rlg, { countCompletion: false, isOop: !!rlg?.paidOop || repeatIsOop(lesson, idx) })
+    })
   })
 
   // Projected total = actual cost so far + expected cost of not-yet-started lessons
   // This avoids the "early expensive lessons inflate the projection" problem of
   // the naive (cost/pct)*100 formula.
-  let remainingCost = 0
+  let remainingLuCost = 0
+  let remainingOopCost = 0
   course.lessons.forEach((lesson) => {
     if (isStarted(sLogs[lesson.id])) return   // already started — captured in actual cost
-    remainingCost += lessonExpectedCost(lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate)
+    const { luCost, oopCost: oopForLesson } = lessonExpectedCost(
+      lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate
+    )
+    remainingLuCost  += luCost
+    remainingOopCost += oopForLesson
   })
 
   const total    = course.lessons.length
   const pct      = total > 0 ? Math.round((completed / total) * 100) : 0
-  const flatRate = student.school === 'Liberty University' ? LU_FLAT_RATES[student.course] : null
-  const projected = Math.round(cost + remainingCost)
+  // Flat rate is per-course, so use the course being viewed (could be a past
+  // course) — not the student's current course.
+  const flatRate = student.school === 'Liberty University' ? LU_FLAT_RATES[activeCourse] : null
+  // Projected LU spend (counts vs flat rate) AND projected total to the student.
+  const projected = Math.round(cost + remainingLuCost)
+  const projectedTotal = Math.round(cost + oopCost + remainingLuCost + remainingOopCost)
 
   // "With repeat allowance" projection — mirrors the official syllabus assumption
   // that most students will use Liberty's one funded repeat. Adds the cost of a
   // typical extra lesson (2.0 hr dual + 0.7 hr ground at the student's rates).
   const bufferLesson = { d: 2.0, g: 0.7 }
-  const repeatBufferCost = lessonExpectedCost(
-    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate
+  const { luCost: bufferLu, oopCost: bufferOop } = lessonExpectedCost(
+    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate
   )
-  const projectedWithRepeat = Math.round(cost + remainingCost + repeatBufferCost)
+  const projectedWithRepeat = Math.round(cost + remainingLuCost + bufferLu + bufferOop)
+
+  // Projected aircraft-surcharge OOP from staying on the current (pricier)
+  // aircraft for all remaining lessons. Combined with what's already been
+  // incurred, gives the chief a forward-looking OOP estimate.
+  const projectedAircraftOop = Math.round(oopCost + remainingOopCost)
 
   return {
     pct,
@@ -174,9 +256,11 @@ export function calcProgress(student, logs, instructors = []) {
     cost: Math.round(cost),                  // Liberty-billed cost (counts vs flat rate)
     oopCost: Math.round(oopCost),            // out-of-pocket charges (do NOT count vs flat rate)
     totalCost: Math.round(cost + oopCost),   // total student-incurred charges
-    projected,
+    projected,                               // projected LU spend at target hours
+    projectedTotal,                          // projected total (LU + OOP) at target hours
+    projectedAircraftOop,                    // forward-looking OOP from aircraft choice
     projectedWithRepeat,
-    repeatBufferCost: Math.round(repeatBufferCost),
+    repeatBufferCost: Math.round(bufferLu + bufferOop),
     completed,
     total,
     flatRate,
@@ -185,14 +269,17 @@ export function calcProgress(student, logs, instructors = []) {
 }
 
 /** Running over/under vs target hours */
-export function overUnder(student, logs) {
-  const course = COURSES[student.course]
+export function overUnder(student, logs, courseOverride) {
+  const activeCourse = courseOverride || student.course
+  const version = courseOverride ? syllabusVersionFor(student, activeCourse) : undefined
+  const course = getCourseDef(activeCourse, version)
   if (!course) return 0
-  const sLogs = logs[student.id] || {}
+  const sLogs = (logs[student.id] || {})[activeCourse] || {}
   let actual = 0
   const add = (lg) => { if (lg) actual += (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0) }
   course.lessons.forEach((l) => {
     add(sLogs[l.id])
+    splitKeysFor(sLogs, l.id).forEach((sk) => add(sLogs[sk]))
     repeatKeysFor(sLogs, l.id).forEach((rk) => add(sLogs[rk]))
   })
   return parseFloat((actual - course.targetTotal).toFixed(1))
@@ -204,10 +291,12 @@ export function budgetPct(progress) {
   return Math.min(100, Math.round((progress.cost / progress.flatRate) * 100))
 }
 
-/** Budget colour based on usage */
+/** Budget colour based on usage.
+ *  Liberty money is meant to be spent, so the bar stays green while the
+ *  student is within budget and only flips red once they exceed it.
+ */
 export function budgetColor(pct) {
   if (pct === null) return '#9ca3af'
-  if (pct < 75) return '#16a34a'
-  if (pct < 90) return '#d97706'
-  return '#dc2626'
+  if (pct <= 100) return '#16a34a'   // green — within budget
+  return '#dc2626'                    // red   — over budget
 }

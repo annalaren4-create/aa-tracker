@@ -51,8 +51,8 @@ export const COURSES = {
       { id: '7.2', d: 2.0, x: 2.0, g: 0.7, t: 2.0, o: 'XC plan, pilot/dead reck, nav systems, emerg comms, lost/divert' },
       { id: '7.3', d: 2.0, x: 2.0, g: 0.7, t: 2.0, sc: true, o: 'Stage Check: XC plan, nav systems, emerg ops, lost/divert, system malf' },
       { id: '7.4', s: 2.5, x: 2.5, t: 2.5, o: 'Solo XC flight plan, VFR follow, pilotage/dead reck, nav systems' },
-      { id: '8.1', d: 1.0, n: 1.0, g: 0.7, t: 1.0, o: 'Night prep, airport nav/lighting, land w/wo landing light' },
-      { id: '8.2', d: 2.0, x: 2.0, i: 0.5, n: 2.0, g: 0.7, t: 2.0, o: 'Night XC, flt plan, VFR follow, pilotage/dead reck, nav systems' },
+      { id: '8.1', d: 1.0, n: 1.0, g: 0.7, t: 1.0, combinableWith: '8.2', o: 'Night prep, airport nav/lighting, land w/wo landing light' },
+      { id: '8.2', d: 2.0, x: 2.0, i: 0.5, n: 2.0, g: 0.7, t: 2.0, combinableWith: '8.1', o: 'Night XC, flt plan, VFR follow, pilotage/dead reck, nav systems' },
       { id: '9.1', d: 1.8, i: 0.4, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, turn around point, emerg des' },
       { id: '9.2', d: 1.8, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, s-turn, emerg des' },
       { id: '9.3', d: 1.8, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, emerg des' },
@@ -144,14 +144,14 @@ export const COURSES = {
     avia: 'AVIA327',
     targetTotal: 36.0,
     lessons: [
-      { id: '6.1', d: 4.0, i: 0.8, g: 0.7, t: 4.0, o: 'Stalls, steep turns/spiral, chandelle, lazy 8\'s, sim instr, po 180, 8\'s on pylon' },
-      { id: '6.2', s: 4.0, t: 4.0, o: 'Steep turns, chandelle, steep spiral, lazy 8\'s, 8\'s on pylon, po 180' },
+      { id: '6.1', d: 4.0, i: 0.8, g: 0.7, t: 4.0, splittable: true, o: 'Stalls, steep turns/spiral, chandelle, lazy 8\'s, sim instr, po 180, 8\'s on pylon' },
+      { id: '6.2', s: 4.0, t: 4.0, splittable: true, o: 'Steep turns, chandelle, steep spiral, lazy 8\'s, 8\'s on pylon, po 180' },
       { id: '6.3', d: 3.0, x: 3.0, i: 0.7, g: 0.7, t: 3.0, o: 'TAA airplane: Pilotage/Dead reck, stall, >50nm, sim engine fail, go around' },
-      { id: '6.4', s: 6.0, x: 6.0, t: 6.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >50nm, po 180, Short/soft' },
+      { id: '6.4', s: 6.0, x: 6.0, t: 6.0, splittable: true, o: 'Pilotage/Dead reck, VOR/GPS, one landing >50nm, po 180, Short/soft' },
       { id: '7.1', d: 3.0, i: 0.3, g: 0.7, t: 3.0, o: 'Steep turns/spiral, chandelle, lazy 8\'s, sim instr unusual att, 8\'s on pylon' },
-      { id: '7.2', d: 5.0, x: 5.0, i: 1.0, g: 0.7, t: 5.0, o: 'XC plan, pilotage/dead reck, ILS/GPS app, track nav partial panel, >100nm' },
-      { id: '7.3', s: 5.0, x: 5.0, t: 5.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >50nm, po 180, go around' },
-      { id: '8.1', d: 4.0, i: 0.5, g: 0.7, t: 4.0, pc: true, o: 'Mock Final Stage Check' },
+      { id: '7.2', d: 5.0, x: 5.0, i: 1.0, g: 0.7, t: 5.0, splittable: true, o: 'XC plan, pilotage/dead reck, ILS/GPS app, track nav partial panel, >100nm' },
+      { id: '7.3', s: 5.0, x: 5.0, t: 5.0, splittable: true, o: 'Pilotage/Dead reck, VOR/GPS, one landing >50nm, po 180, go around' },
+      { id: '8.1', d: 4.0, i: 0.5, g: 0.7, t: 4.0, pc: true, splittable: true, o: 'Mock Final Stage Check' },
       { id: '8.2', g: 3.0, t: 0, o: 'Ground lesson: Mock final review all ground material' },
       { id: '8A', d: 2.0, i: 0.7, g: 3.0, t: 2.0, sc: true, fsc: true, o: 'Final Stage Check' },
     ],
@@ -236,3 +236,56 @@ export const COURSES = {
 }
 
 export const COURSE_NAMES = Object.keys(COURSES)
+
+/**
+ * Older syllabus versions. Keyed by "<course>:<version>".
+ * A student's `courseHistory[i].syllabusVersion` field can reference one of
+ * these so a historical course renders against the syllabus that was in
+ * effect when they took it, even after the current syllabus is changed.
+ */
+export const COURSE_VERSIONS = {
+  // Private 2 before Spring 2026 merge of 6.1 and 6.2 into a single lesson.
+  // Last-semester students (e.g. Gwen Pinto) trained against this version.
+  'Private 2:pre-2026-spring': {
+    avia: 'AVIA225',
+    targetTotal: 28.7,
+    lessons: [
+      { id: '6.1', d: 1.8, g: 0.7, t: 1.8, o: 'Radios, S turn, turn around point, steep turn, traffic pattern' },
+      { id: '6.2', d: 1.8, g: 0.7, t: 1.8, o: 'Short/Soft TO/L intro, ADM, traffic pattern' },
+      { id: '6.3', d: 1.8, i: 0.5, g: 0.7, t: 1.8, o: 'Slow flt, stalls, CFIT, IR climbing/descending turn, GPS, unusual att, lost' },
+      { id: '6.4', s: 1.0, t: 1.0, o: 'Solo to practice area, ground ref, steep turn, normal landing' },
+      { id: '7.1', d: 2.0, x: 2.0, g: 1.5, t: 2.0, o: 'XC flight plan, VFR flt follow, pilotage/dead reck, nav systems' },
+      { id: '7.2', d: 2.0, x: 2.0, g: 0.7, t: 2.0, o: 'XC plan, pilot/dead reck, nav systems, emerg comms, lost/divert' },
+      { id: '7.3', d: 2.0, x: 2.0, g: 0.7, t: 2.0, sc: true, o: 'Stage Check: XC plan, nav systems, emerg ops, lost/divert, system malf' },
+      { id: '7.4', s: 2.5, x: 2.5, t: 2.5, o: 'Solo XC flight plan, VFR follow, pilotage/dead reck, nav systems' },
+      { id: '8.1', d: 1.0, n: 1.0, g: 0.7, t: 1.0, combinableWith: '8.2', o: 'Night prep, airport nav/lighting, land w/wo landing light' },
+      { id: '8.2', d: 2.0, x: 2.0, i: 0.5, n: 2.0, g: 0.7, t: 2.0, combinableWith: '8.1', o: 'Night XC, flt plan, VFR follow, pilotage/dead reck, nav systems' },
+      { id: '9.1', d: 1.8, i: 0.4, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, turn around point, emerg des' },
+      { id: '9.2', d: 1.8, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, s-turn, emerg des' },
+      { id: '9.3', d: 1.8, g: 0.7, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, emerg des' },
+      { id: '9.4', d: 1.8, g: 3.0, t: 1.8, o: 'Short/Soft TO/L, slow flt, stalls, steep turn, emerg des, track VOR' },
+      { id: '10.1', d: 1.8, i: 0.3, g: 3.0, t: 1.8, sc: true, o: 'Stage Check' },
+      { id: '10.2', d: 1.8, i: 0.3, g: 3.0, t: 1.8, fsc: true, o: 'Final Stage Check' },
+    ],
+  },
+}
+
+/**
+ * Resolve a course definition for a (course, optional version) pair. Falls
+ * back to the current syllabus when no version is given.
+ */
+export function getCourseDef(courseName, version) {
+  if (version) {
+    const versioned = COURSE_VERSIONS[`${courseName}:${version}`]
+    if (versioned) return versioned
+  }
+  return COURSES[courseName]
+}
+
+/**
+ * Find a student's syllabus version for a given course by checking their
+ * courseHistory. Returns undefined for the current course (uses default).
+ */
+export function syllabusVersionFor(student, courseName) {
+  return student?.courseHistory?.find((h) => h.course === courseName)?.syllabusVersion
+}

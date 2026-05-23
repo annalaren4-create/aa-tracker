@@ -29,6 +29,41 @@ export default function App() {
           s.aircraft === 'C-172-S') {
         return { ...s, aircraft: 'C-172-L-P' }
       }
+      // One-time: seed Adam Medina's completed Commercial 1 last semester
+      // (primary Anna Herrington, secondary Daniel Wang) into courseHistory.
+      if (s.id === 'seed-09' && !s.courseHistory?.some((h) => h.course === 'Commercial 1')) {
+        return {
+          ...s,
+          courseHistory: [
+            ...(s.courseHistory || []),
+            { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang' },
+          ],
+        }
+      }
+      // One-time: seed Gwen Pinto's Private 2 from last semester (primary Anna
+      // Herrington). Uses the pre-2026-spring syllabus version (6.1 and 6.2 as
+      // separate lessons) since that's what she trained against.
+      if (s.id === 'seed-03' && !s.courseHistory?.some((h) => h.course === 'Private 2')) {
+        return {
+          ...s,
+          courseHistory: [
+            ...(s.courseHistory || []),
+            { course: 'Private 2', completedDate: '2026-04-24', primaryInstructor: 'Anna Herrington', syllabusVersion: 'pre-2026-spring', libRepeatsAllowed: 2 },
+          ],
+        }
+      }
+      // Backfill the syllabusVersion if Gwen's Private 2 entry was seeded
+      // before the version concept existed.
+      if (s.id === 'seed-03' && s.courseHistory?.some((h) => h.course === 'Private 2' && !h.syllabusVersion)) {
+        return {
+          ...s,
+          courseHistory: s.courseHistory.map((h) =>
+            h.course === 'Private 2' && !h.syllabusVersion
+              ? { ...h, syllabusVersion: 'pre-2026-spring', completedDate: h.completedDate || '2026-04-24', libRepeatsAllowed: h.libRepeatsAllowed ?? 2 }
+              : h
+          ),
+        }
+      }
       return s
     })
     const changed = corrected.some((s, i) => s !== saved[i])
@@ -66,7 +101,150 @@ export default function App() {
     if (changed) lsSet('instructors', merged)
     return merged
   })
-  const [logs, setLogs] = useState(() => lsGet('logs') || {})
+  const [logs, setLogs] = useState(() => {
+    const saved = lsGet('logs') || {}
+    // Migration: logs used to be { studentId: { lessonId: data } } — but a student
+    // can take multiple courses over time, and lesson IDs collide across courses.
+    // New shape: { studentId: { course: { lessonId: data } } }. Detect old shape
+    // (any value is a log entry, not a course-keyed object) and lift it under the
+    // student's current course.
+    const currentStudents = lsGet('students') || []
+    const courseOf = (sid) => currentStudents.find((s) => s.id === sid)?.course || 'Unknown'
+    const migrated = {}
+    let didMigrate = false
+    for (const [sid, byKey] of Object.entries(saved)) {
+      if (!byKey || typeof byKey !== 'object') { migrated[sid] = byKey; continue }
+      // A course-namespaced entry's value is itself an object of lesson logs (not
+      // a single log with .date/.dual etc.). Detect old shape by checking if any
+      // entry looks like a flat log.
+      const isOldShape = Object.values(byKey).some((v) =>
+        v && typeof v === 'object' && (
+          'dual' in v || 'solo' in v || 'sim' in v || 'ground' in v ||
+          'completed' in v || 'date' in v || 'incomplete' in v ||
+          'repeatedLib' in v || 'repeatedOop' in v
+        )
+      )
+      if (isOldShape) {
+        migrated[sid] = { [courseOf(sid)]: { ...byKey } }
+        didMigrate = true
+      } else {
+        migrated[sid] = byKey
+      }
+    }
+    // One-time: seed Gwen Pinto's Private 2 historical logs from her tracker,
+    // cross-referenced against the Aviation Adventures charge statement.
+    const GWEN_ID = 'seed-03'
+    const dual  = (h, date, ground) => ({ dual: h, ground: ground ?? 0.7, date, completed: true })
+    const solo  = (h, date) => ({ solo: h, date, completed: true })
+    if (!migrated[GWEN_ID]?.['Private 2']) {
+      migrated[GWEN_ID] = {
+        ...(migrated[GWEN_ID] || {}),
+        'Private 2': {
+          // Cleanly logged from the detailed flight history Gwen shared.
+          // libRepeatsAllowed=2 (old policy) → first 2 Lib-flagged non-check
+          // lessons get funded repeats. Here 7.2 and 9.1.
+          '6.1':     dual(1.8, '2026-02-03'),
+          '6.2':     dual(1.9, '2026-02-04'),
+          '6.3':     dual(1.8, '2026-02-05'),
+          '6.4':     solo(1.2, '2026-02-05'),
+          '7.1':     dual(1.8, '2026-02-09', 3.0),
+          // 7.2 — Lib-funded repeat (1st of 2 allowed)
+          '7.2':         { ...dual(2.5, '2026-02-13'), repeatedLib: true },
+          '7.2__r1':     dual(2.1, '2026-02-18'),
+          // 7.3 — stage check, partial 2nd attempt counts as OOP repeat
+          '7.3':         { ...dual(2.5, '2026-03-09'), repeatedOop: true },
+          '7.3__r1':     dual(0.4, '2026-03-10'),
+          '7.4':     solo(2.2, '2026-03-10'),
+          '8.1':     dual(3.3, '2026-03-19'),         // night dual; covered 8.1 + part of 8.2
+          // 9.1 — Lib-funded repeat (2nd of 2 allowed) — exhausts allowance
+          '9.1':         { ...dual(2.2, '2026-04-01'), repeatedLib: true },
+          '9.1__r1':     dual(2.1, '2026-04-07'),
+          '9.2':     dual(2.0, '2026-04-08'),
+          '9.3':     dual(2.3, '2026-04-09'),
+          // 9.4 — repeated 3 more times; all OOP (Lib allowance used up)
+          '9.4':         { ...dual(2.3, '2026-04-10'), repeatedOop: true },
+          '9.4__r1':     dual(2.7, '2026-04-13'),
+          '9.4__r2':     dual(2.5, '2026-04-14', 0.5),
+          '9.4__r3':     dual(1.9, '2026-04-20'),
+          // 10.1 stage check (correct date 4/16, not 4/13 as previously seeded)
+          '10.1':    dual(1.7, '2026-04-16', 3.0),
+          // 10.2 final stage check — student paid OOP
+          '10.2':    {
+            dual: 1.9, ground: 3.7, date: '2026-04-24',
+            completed: true,
+            instructor: 'Elias Kontanis',
+            aircraft: 'C-172-S',
+            paidOop: true,
+          },
+        },
+      }
+      didMigrate = true
+    } else if (!migrated[GWEN_ID]['Private 2']['7.2__r1']) {
+      // Upgrade path: detect old seed (missing repeat keys) and fully replace
+      // Private 2 with the detailed history from the flight log view.
+      // Safe because Gwen's Private 2 is all seeded data — no manual edits.
+      migrated[GWEN_ID]['Private 2'] = {
+        '6.1':     dual(1.8, '2026-02-03'),
+        '6.2':     dual(1.9, '2026-02-04'),
+        '6.3':     dual(1.8, '2026-02-05'),
+        '6.4':     solo(1.2, '2026-02-05'),
+        '7.1':     dual(1.8, '2026-02-09', 3.0),
+        '7.2':         { ...dual(2.5, '2026-02-13'), repeatedLib: true },
+        '7.2__r1':     dual(2.1, '2026-02-18'),
+        '7.3':         { ...dual(2.5, '2026-03-09'), repeatedOop: true },
+        '7.3__r1':     dual(0.4, '2026-03-10'),
+        '7.4':     solo(2.2, '2026-03-10'),
+        '8.1':     dual(3.3, '2026-03-19'),
+        '9.1':         { ...dual(2.2, '2026-04-01'), repeatedLib: true },
+        '9.1__r1':     dual(2.1, '2026-04-07'),
+        '9.2':     dual(2.0, '2026-04-08'),
+        '9.3':     dual(2.3, '2026-04-09'),
+        '9.4':         { ...dual(2.3, '2026-04-10'), repeatedOop: true },
+        '9.4__r1':     dual(2.7, '2026-04-13'),
+        '9.4__r2':     dual(2.5, '2026-04-14', 0.5),
+        '9.4__r3':     dual(1.9, '2026-04-20'),
+        '10.1':    dual(1.7, '2026-04-16', 3.0),
+        '10.2':    {
+          dual: 1.9, ground: 3.7, date: '2026-04-24',
+          completed: true,
+          instructor: 'Elias Kontanis',
+          aircraft: 'C-172-S',
+          paidOop: true,
+        },
+      }
+      didMigrate = true
+    }
+
+    // One-time: seed Adam Medina's completed Commercial 1 historical logs from
+    // last semester's tracker sheet. Idempotent — only adds if not already present.
+    const ADAM_ID = 'seed-09'
+    if (!migrated[ADAM_ID]?.['Commercial 1']) {
+      const dual  = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })
+      const solo  = (h, date) => ({ solo: h, date, completed: true })
+      const check = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })  // prog check
+      migrated[ADAM_ID] = {
+        ...(migrated[ADAM_ID] || {}),
+        'Commercial 1': {
+          '1.1': dual(3.1, '2026-03-25'),
+          '1.2': dual(1.0, '2026-03-25'),
+          '1.3': solo(3.6, '2026-04-06'),
+          '1.4': dual(3.9, '2026-04-06'),
+          '1.5': solo(0.9, '2026-04-07'),
+          '2.1': solo(3.9, '2026-04-10'),
+          '2.2': solo(1.5, '2026-04-16'),
+          '2.3': solo(6.4, '2026-04-17'),
+          '2.4': solo(3.8, '2026-04-21'),
+          '2A':  check(2.7, '2026-04-24'),
+          '3.1': solo(2.0, '2026-05-01'),
+          '3.4': solo(6.5, '2026-05-01'),
+          '3A':  check(2.6, '2026-05-06'),
+        },
+      }
+      didMigrate = true
+    }
+    if (didMigrate) lsSet('logs', migrated)
+    return migrated
+  })
   // Role-change requests submitted by instructors, pending Chief approval.
   // Each item: { id, instructorName, base, field: 'chief'|'stageCheck', requestedAt, note }
   const [roleRequests, setRoleRequests] = useState(() => lsGet('roleRequests') || [])
@@ -167,29 +345,37 @@ export default function App() {
   // Functional updates so multiple logFlight/clearLesson calls in the same tick
   // (e.g. save a repeat attempt AND mark its parent completed) compose correctly
   // instead of clobbering each other via stale state captured at render time.
-  const logFlight = (studentId, lessonId, data) => {
+  // Logs are namespaced by course (course string is required) so multi-course
+  // student histories don't collide on lesson IDs like '1.1'.
+  const logFlight = (studentId, course, lessonId, data) => {
     setLogs((prev) => {
+      const studentLogs = prev[studentId] || {}
+      const courseLogs = studentLogs[course] || {}
       const next = {
         ...prev,
-        [studentId]: { ...(prev[studentId] || {}), [lessonId]: data },
+        [studentId]: { ...studentLogs, [course]: { ...courseLogs, [lessonId]: data } },
       }
       lsSet('logs', next)
       return next
     })
   }
 
-  const clearLesson = (studentId, lessonId) => {
+  const clearLesson = (studentId, course, lessonId) => {
     setLogs((prev) => {
-      const studentLogs = { ...(prev[studentId] || {}) }
-      delete studentLogs[lessonId]
-      const next = { ...prev, [studentId]: studentLogs }
+      const studentLogs = prev[studentId] || {}
+      const courseLogs = { ...(studentLogs[course] || {}) }
+      delete courseLogs[lessonId]
+      const next = {
+        ...prev,
+        [studentId]: { ...studentLogs, [course]: courseLogs },
+      }
       lsSet('logs', next)
       return next
     })
   }
 
   /* ── shared helpers ──────────────────────────────────────────── */
-  const calc = (student) => calcProgress(student, logs, instructors)
+  const calc = (student, courseOverride) => calcProgress(student, logs, instructors, courseOverride)
 
   const goToStudentDetail = (student, asInstructor = true) => {
     setSelectedStudent(student)
@@ -277,6 +463,7 @@ export default function App() {
       onAddStudent={addStudent}
       onDeleteStudent={deleteStudent}
       onDeleteStudentAccount={deleteStudentAccount}
+      onUpdateStudent={updateStudent}
       onAddInstructor={addInstructor}
       onDeleteInstructor={deleteInstructor}
       onUpdateInstructor={updateInstructor}

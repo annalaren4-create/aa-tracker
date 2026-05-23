@@ -19,8 +19,8 @@ function getBudgetPace(p) {
   const spendPct    = Math.min((p.cost / p.flatRate) * 100, 100)
   const expectedPct = Math.min(p.pct, 100)
   let status
-  if (projected < p.flatRate * 0.95)      status = 'under'
-  else if (projected > p.flatRate * 1.05) status = 'over'
+  if (projected > p.flatRate)             status = 'over'
+  else if (projected < p.flatRate * 0.98) status = 'under'
   else                                    status = 'on-track'
   // "At risk" = burning budget faster than progress. If spend% is more than
   // 20 percentage points ahead of completion% AND >50% of budget used, flag it —
@@ -32,6 +32,7 @@ function getBudgetPace(p) {
 export default function ChiefDash({
   account, students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent, onDeleteStudentAccount,
+  onUpdateStudent,
   onAddInstructor, onDeleteInstructor, onUpdateInstructor,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
   calcProgress, onSignOut,
@@ -268,6 +269,8 @@ export default function ChiefDash({
                   pace={pace}
                   striped={i % 2 === 1}
                   myName={myName}
+                  instructors={instructors}
+                  onUpdateStudent={onUpdateStudent}
                   onView={() => onSelectStudent(student)}
                   onDelete={() => {
                     if (confirm(`Remove ${student.name} from the dashboard?\n\nTheir login account will be kept — they can sign back in or be re-added later.`)) {
@@ -356,7 +359,7 @@ function MiniStat({ label, value, small }) {
   )
 }
 
-function StudentRow({ student, progress: p, pace, striped, myName, onView, onDelete, onDeleteAccount }) {
+function StudentRow({ student, progress: p, pace, striped, myName, instructors = [], onUpdateStudent, onView, onDelete, onDeleteAccount }) {
   const myRole = myName
     ? (student.primaryInstructor === myName ? 'Primary'
        : student.secondaryInstructor === myName ? 'Secondary'
@@ -369,6 +372,16 @@ function StudentRow({ student, progress: p, pace, striped, myName, onView, onDel
     .replace('Multi Engine Instructor', 'MEI')
 
   const [hovered, setHovered] = useState(false)
+  const [editingPrimary, setEditingPrimary] = useState(false)
+  const [editingSecondary, setEditingSecondary] = useState(false)
+
+  // Instructors available at this student's base (used for dropdown options).
+  const baseInstructors = instructors
+    .filter((i) => !i.base || i.base === student.base)
+    .map((i) => i.name)
+    .sort()
+
+  const stopRowClick = (e) => e.stopPropagation()
 
   return (
     <div
@@ -419,8 +432,31 @@ function StudentRow({ student, progress: p, pace, striped, myName, onView, onDel
             </span>
           )}
         </div>
-        <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          Primary instructor: {student.primaryInstructor}
+        <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.3, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {/* Primary instructor — inline edit on click */}
+          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Primary:{' '}
+            {editingPrimary ? (
+              <select
+                value={student.primaryInstructor}
+                autoFocus
+                onClick={stopRowClick}
+                onChange={(e) => { stopRowClick(e); onUpdateStudent?.(student.id, { primaryInstructor: e.target.value }); setEditingPrimary(false) }}
+                onBlur={() => setEditingPrimary(false)}
+                style={{ fontSize: 10, padding: '0 4px', border: '1px solid #9ca3af', borderRadius: 3, height: 18, width: 'auto', display: 'inline-block' }}
+              >
+                {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
+              </select>
+            ) : (
+              <span
+                onClick={(e) => { stopRowClick(e); setEditingPrimary(true) }}
+                style={{ color: '#374151', borderBottom: '1px dashed #d1d5db', cursor: 'pointer' }}
+                title="Click to change primary instructor"
+              >
+                {student.primaryInstructor} ✏
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

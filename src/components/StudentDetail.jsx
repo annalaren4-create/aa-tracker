@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { COURSES } from '../data/courses'
+import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
-import { budgetPct, budgetColor, overUnder, repeatKeysFor } from '../utils/calculations'
+import { budgetPct, budgetColor, overUnder, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
@@ -15,6 +15,13 @@ export default function StudentDetail({
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
+  const [showLegend, setShowLegend] = useState(false)
+  // Course selector — defaults to the student's current/active course. When
+  // switched to a past course (from courseHistory), the page renders that
+  // course's logs read-only.
+  const [viewCourse, setViewCourse] = useState(student.course)
+  const isViewingPastCourse = viewCourse !== student.course
+  const canEdit = isInstructor && !isViewingPastCourse
   const [editingDate, setEditingDate] = useState(null)
   const [editingAircraft, setEditingAircraft] = useState(false)
   const [editingPrimary, setEditingPrimary] = useState(false)
@@ -26,11 +33,13 @@ export default function StudentDetail({
     .map((i) => i.name)
     .sort()
 
-  const course    = COURSES[student.course]
-  const sLogs     = logs[student.id] || {}
-  const progress  = calcProgress(student)
+  // Historical courses may use an older syllabus snapshot (see COURSE_VERSIONS).
+  const viewSyllabusVersion = viewCourse !== student.course ? syllabusVersionFor(student, viewCourse) : undefined
+  const course    = getCourseDef(viewCourse, viewSyllabusVersion)
+  const sLogs     = (logs[student.id] || {})[viewCourse] || {}
+  const progress  = calcProgress(student, viewCourse)  // calc fn signature is (student, courseOverride)
   const acRate    = AIRCRAFT_RATES[student.aircraft] || 0
-  const ou        = overUnder(student, logs)
+  const ou        = overUnder(student, logs, viewCourse)
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
 
@@ -69,15 +78,25 @@ export default function StudentDetail({
   const multiRepeatLessons = course.lessons.filter(
     (l) => repeatKeysFor(sLogs, l.id).length > 1
   )
-  // Row badge: the FIRST repeat row mirrors the parent's flag (Lib or OOP);
-  // every subsequent repeat is automatically OOP since Liberty only funds one
-  // repeat per lesson. The UI prevents marking Lib on stage/progress checks
-  // or on more than one lesson, so we trust the parent flag here.
+  // Row badge: mirrors the calc logic. First repeat of each Lib-flagged lesson
+  // is Lib (up to the course's funded-repeats allowance), all others are OOP.
+  const allowedRepeats = (() => {
+    const histEntry = student.courseHistory?.find((h) => h.course === viewCourse)
+    if (histEntry?.libRepeatsAllowed != null) return histEntry.libRepeatsAllowed
+    return 1  // current policy
+  })()
+  const libFundedLessonIds = []
+  for (const l of course.lessons) {
+    if (libFundedLessonIds.length >= allowedRepeats) break
+    const lg = sLogs[l.id]
+    if (lg?.repeatedLib && !l.sc && !l.fsc && !l.pc) libFundedLessonIds.push(l.id)
+  }
   const repeatBillingType = (lesson, repeatIndex) => {
     const parent = sLogs[lesson.id] || {}
     if (repeatIndex === 0) {
       if (parent.repeatedOop) return 'OOP'
-      if (parent.repeatedLib) return 'Lib'
+      if (parent.repeatedLib && libFundedLessonIds.includes(lesson.id)) return 'Lib'
+      if (parent.repeatedLib) return 'OOP'    // beyond the funded allowance
       return 'repeat'
     }
     return 'OOP'
@@ -115,7 +134,8 @@ export default function StudentDetail({
           <div>
             <h1>{student.name}</h1>
             <small>
-              {student.course} · {COURSES[student.course]?.avia} · {student.base} ·{' '}
+              {viewCourse} · {COURSES[viewCourse]?.avia} · {student.base} ·{' '}
+              {isViewingPastCourse && <span style={{ background: 'rgba(255,255,255,.15)', padding: '1px 6px', borderRadius: 4, marginRight: 4 }}>past</span>}
               {isInstructor ? (
                 editingAircraft ? (
                   <select
@@ -142,57 +162,70 @@ export default function StudentDetail({
             </small>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.85)' }}>
-            Primary:{' '}
-            {isInstructor ? (
-              editingPrimary ? (
-                <select
-                  value={student.primaryInstructor}
-                  autoFocus
-                  onChange={(e) => { onUpdateStudent(student.id, { primaryInstructor: e.target.value }); setEditingPrimary(false) }}
-                  onBlur={() => setEditingPrimary(false)}
-                  style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
-                >
-                  {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
-                </select>
-              ) : (
-                <span
-                  onClick={() => setEditingPrimary(true)}
-                  style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
-                  title="Click to change primary instructor"
-                >
-                  {student.primaryInstructor} ✏
-                </span>
-              )
-            ) : student.primaryInstructor}
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.65)' }}>
-            Secondary:{' '}
-            {isInstructor ? (
-              editingSecondary ? (
-                <select
-                  value={student.secondaryInstructor || ''}
-                  autoFocus
-                  onChange={(e) => { onUpdateStudent(student.id, { secondaryInstructor: e.target.value }); setEditingSecondary(false) }}
-                  onBlur={() => setEditingSecondary(false)}
-                  style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
-                >
-                  <option value="">— none —</option>
-                  {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
-                </select>
-              ) : (
-                <span
-                  onClick={() => setEditingSecondary(true)}
-                  style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
-                  title="Click to change secondary instructor"
-                >
-                  {student.secondaryInstructor || '— none —'} ✏
-                </span>
-              )
-            ) : (student.secondaryInstructor || '')}
-          </div>
-        </div>
+        {/* Primary / Secondary for the course being viewed. When viewing a past
+            course, pull from courseHistory and render read-only (those facts are
+            historical and shouldn't be editable). */}
+        {(() => {
+          const histEntry = isViewingPastCourse
+            ? student.courseHistory?.find((h) => h.course === viewCourse)
+            : null
+          const primaryName   = histEntry?.primaryInstructor   || student.primaryInstructor
+          const secondaryName = histEntry?.secondaryInstructor || student.secondaryInstructor
+          const editable = isInstructor && !isViewingPastCourse
+          return (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,.85)' }}>
+                Primary:{' '}
+                {editable ? (
+                  editingPrimary ? (
+                    <select
+                      value={primaryName}
+                      autoFocus
+                      onChange={(e) => { onUpdateStudent(student.id, { primaryInstructor: e.target.value }); setEditingPrimary(false) }}
+                      onBlur={() => setEditingPrimary(false)}
+                      style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
+                    >
+                      {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
+                    </select>
+                  ) : (
+                    <span
+                      onClick={() => setEditingPrimary(true)}
+                      style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
+                      title="Click to change primary instructor"
+                    >
+                      {primaryName} ✏
+                    </span>
+                  )
+                ) : primaryName}
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.65)' }}>
+                Secondary:{' '}
+                {editable ? (
+                  editingSecondary ? (
+                    <select
+                      value={secondaryName || ''}
+                      autoFocus
+                      onChange={(e) => { onUpdateStudent(student.id, { secondaryInstructor: e.target.value }); setEditingSecondary(false) }}
+                      onBlur={() => setEditingSecondary(false)}
+                      style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
+                    >
+                      <option value="">— none —</option>
+                      {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
+                    </select>
+                  ) : (
+                    <span
+                      onClick={() => setEditingSecondary(true)}
+                      style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
+                      title="Click to change secondary instructor"
+                    >
+                      {secondaryName || '— none —'} ✏
+                    </span>
+                  )
+                ) : (secondaryName || '')}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Print-only header */}
@@ -211,11 +244,61 @@ export default function StudentDetail({
       </div>
 
       <div style={{ padding: 16, maxWidth: 1280, margin: '0 auto' }} className="print-container">
+        {/* Course selector — present when the student has any past courses to view. */}
+        {(student.courseHistory?.length > 0 || canEdit) && (
+          <div className="no-print" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: '#6b7280' }}>Viewing course:</label>
+            <select
+              value={viewCourse}
+              onChange={(e) => setViewCourse(e.target.value)}
+              style={{ fontSize: 13, padding: '4px 8px', width: 'auto', borderRadius: 6 }}
+            >
+              <option value={student.course}>{student.course} (current)</option>
+              {(student.courseHistory || []).map((h) => (
+                <option key={h.course} value={h.course}>
+                  {h.course} {h.completedDate ? `(completed ${h.completedDate})` : '(completed)'}
+                </option>
+              ))}
+            </select>
+            {isViewingPastCourse && (
+              <span style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 12 }}>
+                Read-only · historical record
+              </span>
+            )}
+            {isInstructor && (
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ marginLeft: 'auto', fontSize: 11 }}
+                onClick={() => {
+                  const courseName = prompt('Course name (e.g. "Commercial 1"):')
+                  if (!courseName || !COURSES[courseName]) {
+                    if (courseName) alert(`Course "${courseName}" not found. Must match an entry in courses.js exactly.`)
+                    return
+                  }
+                  const completedDate = prompt('Completion date (YYYY-MM-DD), or leave blank:') || ''
+                  const newHist = [...(student.courseHistory || []), { course: courseName, completedDate }]
+                  onUpdateStudent(student.id, { courseHistory: newHist })
+                  setViewCourse(courseName)
+                }}
+              >
+                + Add completed course
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Instructor contact card — visible to students AND instructors */}
         {(() => {
           const findInstr = (n) => n ? instructors.find((i) => i.name === n) : null
-          const primary = findInstr(student.primaryInstructor)
-          const secondary = findInstr(student.secondaryInstructor)
+          // When viewing a past course, prefer the primary/secondary recorded
+          // for that course in courseHistory; otherwise fall back to current.
+          const histEntry = isViewingPastCourse
+            ? student.courseHistory?.find((h) => h.course === viewCourse)
+            : null
+          const primaryName   = histEntry?.primaryInstructor   || student.primaryInstructor
+          const secondaryName = histEntry?.secondaryInstructor || student.secondaryInstructor
+          const primary = findInstr(primaryName)
+          const secondary = findInstr(secondaryName)
           const shown = [primary, secondary].filter(Boolean)
           if (shown.length === 0) return null
           return (
@@ -314,9 +397,20 @@ export default function StudentDetail({
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
               </div>
-              {progress.oopCost > 0 && (
-                <div style={{ fontSize: 11, color: '#b45309', marginTop: 2, fontWeight: 600 }}>
-                  + ${progress.oopCost.toLocaleString()} out of pocket
+              {/* One OOP line. If a forward projection is meaningfully larger
+                  than what's been incurred, show both as "so far · est. at end".
+                  Otherwise just show the single number. */}
+              {(progress.oopCost > 0 || progress.projectedAircraftOop > 0) && (
+                <div
+                  style={{ fontSize: 11, color: '#b45309', marginTop: 2, fontWeight: 600 }}
+                  title="Out-of-pocket charges so far. Projection assumes the student keeps flying their current aircraft for the rest of the course."
+                >
+                  + ${progress.oopCost.toLocaleString()} OOP
+                  {progress.projectedAircraftOop > progress.oopCost && (
+                    <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>
+                      (~${progress.projectedAircraftOop.toLocaleString()} at course end)
+                    </span>
+                  )}
                 </div>
               )}
               {progress.projected != null && (
@@ -355,8 +449,40 @@ export default function StudentDetail({
 
         {/* Syllabus table */}
         <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2 style={{ fontSize: 14, fontWeight: 500 }}>Course syllabus — {student.course}</h2>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <h2 style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Course syllabus — {student.course}
+              <span
+                onMouseEnter={() => setShowLegend(true)}
+                onMouseLeave={() => setShowLegend(false)}
+                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 16, height: 16, borderRadius: '50%',
+                    background: '#e5e7eb', color: '#6b7280',
+                    fontSize: 10, fontWeight: 700,
+                  }}
+                >
+                  i
+                </span>
+                {showLegend && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                    background: '#1f2937', color: '#fff',
+                    padding: '8px 12px', borderRadius: 6,
+                    fontSize: 11, fontWeight: 400, lineHeight: 1.5,
+                    whiteSpace: 'nowrap', zIndex: 50,
+                    boxShadow: '0 4px 12px rgba(0,0,0,.18)',
+                  }}>
+                    <div><strong>Dual · Solo · XC · Instr · Sim · Target</strong> — syllabus targets (read-only)</div>
+                    <div><strong>Actual · Ground</strong> — entered per attempt</div>
+                    <div>Over/Under = actual − target  (amber over, green under)</div>
+                  </div>
+                )}
+              </span>
+            </h2>
             {isInstructor && <span style={{ fontSize: 12, color: '#6b7280' }}>Click a row to log flight time</span>}
           </div>
 
@@ -373,27 +499,13 @@ export default function StudentDetail({
             <span style={{ textAlign: 'right' }}>XC</span>
             <span style={{ textAlign: 'right' }} title="Hood / instrument time">Instr</span>
             <span style={{ textAlign: 'right' }} title="Simulator hours">Sim</span>
-            <span style={{ textAlign: 'right' }} title="Target total flight time for the lesson">Target Total</span>
-            <span style={{ textAlign: 'right' }} title="Actual flight time logged this attempt">Actual Flight</span>
+            <span style={{ textAlign: 'right' }} title="Target total flight time for the lesson">Target</span>
+            <span style={{ textAlign: 'right' }} title="Actual flight time logged this attempt">Actual</span>
             <span style={{ textAlign: 'right' }} title="Actual minus target — amber if over, green if under">Over/Under</span>
             <span style={{ textAlign: 'right' }}>Ground</span>
             <span>Objectives</span>
             <span style={{ textAlign: 'center' }}>Date</span>
             <span style={{ textAlign: 'center' }}>Status</span>
-          </div>
-          {/* Legend — color-banded for scannability. The read-only target columns
-              get a subtle gray strip so they visually group, distinguishing them
-              from the editable Actual Flight / Ground columns. */}
-          <div style={{ padding: '6px 12px', background: '#f1f5f9', borderBottom: '1px solid #e5e7eb', fontSize: 10, color: '#374151', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>
-              <span style={{ display: 'inline-block', width: 8, height: 8, background: '#e5e7eb', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
-              <strong>Dual · Solo · XC · Instr · Sim · Target Total</strong> = syllabus targets (read-only)
-            </span>
-            <span>
-              <span style={{ display: 'inline-block', width: 8, height: 8, background: '#bfdbfe', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
-              <strong>Actual Flight · Ground</strong> = entered per attempt
-            </span>
-            <span style={{ color: '#6b7280' }}>Over/Under = actual − target · amber over, green under</span>
           </div>
 
           {course.lessons.flatMap((lesson) => {
@@ -402,7 +514,33 @@ export default function StudentDetail({
             // newest repeat) was marked Repeat (Lib/OOP) or Incomplete, append an
             // empty placeholder row so the instructor has somewhere to log the next
             // attempt without having to dig through menus.
+            //
+            // Skip lessons that have been absorbed into a sibling combined flight
+            // (e.g. 8.2 when 8.1's log was saved with "Combined with 8.2") — the
+            // primary lesson's row will render a merged label for both.
+            const myLg = sLogs[lesson.id] || {}
+            if (myLg.combinedFrom) return []
             const items = [{ key: lesson.id, isRepeat: false }]
+            // Split continuations come right after the original lesson row,
+            // before any repeats. They're billed as Lib-funded.
+            splitKeysFor(sLogs, lesson.id).forEach((sk) => items.push({ key: sk, isSplit: true }))
+            // If the latest split was marked "Split — finish later" and there
+            // isn't an empty next-split row yet, spawn one so the instructor
+            // has somewhere to log the next session.
+            const splitKeys = splitKeysFor(sLogs, lesson.id)
+            const lastSplitKey = splitKeys[splitKeys.length - 1]
+            const lastSplitLg  = lastSplitKey ? sLogs[lastSplitKey] : null
+            const needsNextSplit =
+              (myLg.splitContinuing && splitKeys.length === 0) ||
+              (lastSplitLg?.splitContinuing && lastSplitKey)
+            if (needsNextSplit) {
+              const usedSplitNums = splitKeys.map((k) => parseInt(k.split('__s')[1], 10) || 0)
+              const nextSplitNum  = (usedSplitNums.length ? Math.max(...usedSplitNums) : 0) + 1
+              const placeholderKey = `${lesson.id}__s${nextSplitNum}`
+              if (!sLogs[placeholderKey]) {
+                items.push({ key: placeholderKey, isSplit: true, pending: true })
+              }
+            }
             const repeatKeys = repeatKeysFor(sLogs, lesson.id)
             repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
             const origLg = sLogs[lesson.id] || {}
@@ -417,9 +555,9 @@ export default function StudentDetail({
               items.push({ key: `${lesson.id}__r${nextNum}`, isRepeat: true, pending: true })
             }
             return items
-          }).map(({ key, isRepeat, pending }) => {
-            // Resolve the underlying lesson definition (strip the __rN suffix if present)
-            const baseId = key.split('__r')[0]
+          }).map(({ key, isRepeat, isSplit, pending }) => {
+            // Resolve the underlying lesson definition (strip __rN or __sN suffixes).
+            const baseId = key.split('__r')[0].split('__s')[0]
             const lesson = course.lessons.find((l) => l.id === baseId)
             const lg = sLogs[key] || {}
             // Status pill: "unsuccessful" (busted) gets its own treatment on
@@ -440,6 +578,41 @@ export default function StudentDetail({
             const repeatIdx = isRepeat ? repeatNum - 1 : 0
             const repeatBadge = isRepeat ? repeatBillingType(lesson, repeatIdx) : null
 
+            // If this row was auto-marked completed via a sibling lesson's
+            // "Combined with" flag, redirect any click to the primary lesson.
+            // (After the flatMap skip above this should rarely render, but keep
+            // the redirect as a fallback.)
+            const combinedFrom = lg.combinedFrom
+            const isCombinedChild = !!combinedFrom
+            // Detect if THIS lesson is the primary of a combined pair (its
+            // sibling has been absorbed into this row via combinedFrom).
+            const siblingId = !isRepeat && lesson.combinableWith
+            const siblingLg  = siblingId ? sLogs[siblingId] : null
+            const siblingDef = siblingId ? course.lessons.find((l) => l.id === siblingId) : null
+            const isCombinedPrimary = !!(siblingLg?.combinedFrom === lesson.id && siblingDef)
+            // Targets shown in this row — for the combined primary, sum both.
+            const showLesson = isCombinedPrimary
+              ? {
+                  ...lesson,
+                  id: `${lesson.id} + ${siblingDef.id}`,
+                  d:  (lesson.d  || 0) + (siblingDef.d  || 0),
+                  s:  (lesson.s  || 0) + (siblingDef.s  || 0),
+                  x:  (lesson.x  || 0) + (siblingDef.x  || 0),
+                  i:  (lesson.i  || 0) + (siblingDef.i  || 0),
+                  sm: (lesson.sm || 0) + (siblingDef.sm || 0),
+                  t:  (lesson.t  || 0) + (siblingDef.t  || 0),
+                  g:  (lesson.g  || 0) + (siblingDef.g  || 0),
+                }
+              : lesson
+            const openLog = () => {
+              if (!isInstructor) return
+              if (isCombinedChild) {
+                const primaryLesson = course.lessons.find((l) => l.id === combinedFrom)
+                if (primaryLesson) setLogLesson({ lesson: primaryLesson, key: combinedFrom })
+              } else {
+                setLogLesson({ lesson, key })
+              }
+            }
             return (
               <div
                 key={key}
@@ -447,18 +620,47 @@ export default function StudentDetail({
                   display: 'grid', gridTemplateColumns: COLS, gap: 4,
                   alignItems: 'center', padding: '6px 10px',
                   borderBottom: '1px solid #f3f4f6', fontSize: 12, cursor: 'pointer',
-                  background: isRepeat
-                    ? 'rgba(220,38,38,.04)'
-                    : lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
-                  borderLeft: isRepeat ? '3px solid #dc2626' : undefined,
+                  background: isCombinedChild
+                    ? 'rgba(7,89,133,.05)'
+                    : isSplit
+                      ? 'rgba(2,132,199,.04)'
+                      : isRepeat
+                        ? 'rgba(220,38,38,.04)'
+                        : lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
+                  borderLeft: isCombinedChild
+                    ? '3px solid #0284c7'
+                    : isSplit
+                      ? '3px solid #0284c7'
+                      : isRepeat ? '3px solid #dc2626' : undefined,
+                  opacity: isCombinedChild ? 0.85 : 1,
                   minWidth: 1080,
                 }}
-                onClick={() => isInstructor && setLogLesson({ lesson, key })}
+                title={isCombinedChild ? `Logged as combined flight with lesson ${combinedFrom} — click to edit there` : undefined}
+                onClick={openLog}
               >
                 <div>
                   <span style={{ fontWeight: 500 }}>
-                    {isRepeat ? <span style={{ color: '#dc2626' }}>↻ {lesson.id}</span> : lesson.id}
+                    {isRepeat
+                      ? <span style={{ color: '#dc2626' }}>↻ {lesson.id}</span>
+                      : isSplit
+                        ? <span style={{ color: '#0284c7' }}>→ {lesson.id}</span>
+                        : isCombinedPrimary ? showLesson.id : lesson.id}
                   </span>
+                  {isSplit && (
+                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
+                      split {parseInt(key.split('__s')[1], 10) || ''}{pending ? ' — log' : ''}
+                    </div>
+                  )}
+                  {isCombinedPrimary && (
+                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
+                      combined
+                    </div>
+                  )}
+                  {isCombinedChild && (
+                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
+                      ↔ with {combinedFrom}
+                    </div>
+                  )}
                   {isRepeat && repeatBadge && (
                     <div className={`tag ${repeatBadge === 'Lib' ? 'tag-blue' : 'tag-amber'}`} style={{ marginTop: 2, fontSize: 10 }}>
                       repeat ({repeatBadge}){pending ? ' — log' : ''}
@@ -471,18 +673,20 @@ export default function StudentDetail({
                   )}
                 </div>
 
-                {/* Syllabus targets — read-only single numbers per lesson */}
-                <TargetCell value={lesson.d  || lesson.sm} />
-                <TargetCell value={lesson.s} />
-                <TargetCell value={lesson.x} />
-                <TargetCell value={lesson.i} />
-                <TargetCell value={lesson.sm} />
-                <TargetCell value={lesson.t} bold />
+                {/* Syllabus targets — read-only single numbers per lesson.
+                    Uses showLesson so combined pairs (e.g. 8.1 + 8.2) display
+                    the summed targets on one line. */}
+                <TargetCell value={showLesson.d  || showLesson.sm} />
+                <TargetCell value={showLesson.s} />
+                <TargetCell value={showLesson.x} />
+                <TargetCell value={showLesson.i} />
+                <TargetCell value={showLesson.sm} />
+                <TargetCell value={showLesson.t} bold />
 
                 {/* Actual flight time logged this attempt */}
                 {(() => {
                   const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
-                  const target    = lesson.t || 0
+                  const target    = showLesson.t || 0
                   const diff      = actualFlt - target
                   const showDiff  = actualFlt > 0 && target > 0
                   return (
@@ -501,9 +705,11 @@ export default function StudentDetail({
                 })()}
 
                 {/* Ground time logged this attempt — keeps the logged/target overlay */}
-                <LogCell logged={lg.ground} rec={lesson.g} />
+                <LogCell logged={lg.ground} rec={showLesson.g} />
 
-                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>{lesson.o}</span>
+                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                  {isCombinedPrimary ? `${lesson.o} · ${siblingDef.o}` : lesson.o}
+                </span>
 
                 {/* Date cell — inline editable for instructors */}
                 <span
@@ -522,7 +728,7 @@ export default function StudentDetail({
                       autoFocus
                       style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #1a3a5c', borderRadius: 4, width: '100%' }}
                       onClick={(e) => e.stopPropagation()}
-                      onBlur={(e) => { onLogFlight(student.id, key, { ...lg, date: e.target.value }); setEditingDate(null) }}
+                      onBlur={(e) => { onLogFlight(student.id, viewCourse, key, { ...lg, date: e.target.value }); setEditingDate(null) }}
                     />
                   ) : (
                     <span>
@@ -606,6 +812,7 @@ export default function StudentDetail({
           logs={logs}
           instructors={instructors}
           mode={ledgerMode}
+          viewCourse={viewCourse}
           onClose={() => setLedgerMode(null)}
         />
       )}
@@ -629,6 +836,13 @@ export default function StudentDetail({
           libRepeatUsedElsewhere={libRepeats.some((l) => l.id !== logLesson.lesson.id)}
           isRepeatAttempt={logLesson.key.includes('__r')}
           defaultInstructor={account?.role === 'instructor' || account?.role === 'chief' ? account?.name : undefined}
+          defaultAircraft={student.aircraft}
+          siblingLesson={logLesson.lesson?.combinableWith ? course.lessons.find((l) => l.id === logLesson.lesson.combinableWith) : null}
+          siblingAlreadyCombined={
+            logLesson.lesson?.combinableWith
+              ? sLogs[logLesson.lesson.combinableWith]?.combinedFrom === logLesson.lesson.id
+              : false
+          }
           isLastRepeat={(() => {
             if (!logLesson.key.includes('__r')) return false
             const parentId = logLesson.key.split('__r')[0]
@@ -640,10 +854,54 @@ export default function StudentDetail({
             return !laterExists
           })()}
           onSave={(data) => {
-            const { _repeatAgain, ...lessonData } = data
+            const { _repeatAgain, _combineWith, _uncombineSibling, _splitContinuing, ...lessonData } = data
             const prevLg = sLogs[logLesson.key] || {}
-            onLogFlight(student.id, logLesson.key, lessonData)
+            // Carry the split-continuing flag onto the log so the syllabus
+            // renderer knows to spawn the next __sN placeholder row.
+            onLogFlight(student.id, viewCourse, logLesson.key, {
+              ...lessonData,
+              splitContinuing: _splitContinuing || undefined,
+            })
 
+            // "Combined with sibling lesson" — write a minimal sibling entry so
+            // the syllabus shows both lessons completed by this single flight.
+            // Mark it with `combinedFrom` so the row renders read-only and a
+            // click redirects to the primary log (no double-logging).
+            if (_combineWith) {
+              const siblingLg = sLogs[_combineWith] || {}
+              onLogFlight(student.id, viewCourse, _combineWith, {
+                ...siblingLg,
+                completed: true,
+                date: lessonData.date || siblingLg.date,
+                notes: siblingLg.notes || `Combined with ${logLesson.key}`,
+                combinedFrom: logLesson.key,
+              })
+            }
+            // "Uncombine" — user opened a combined lesson and unchecked the
+            // Combined box. Clear the sibling's log so it's a separate row again.
+            if (_uncombineSibling) {
+              onClearLesson(student.id, viewCourse, _uncombineSibling)
+            }
+
+            // If this was a SPLIT session marked Completed ✓, also mark the
+            // original (parent) lesson + any earlier splits complete.
+            if (logLesson.key.includes('__s') && lessonData.completed) {
+              const parentId = logLesson.key.split('__s')[0]
+              const currentNum = parseInt(logLesson.key.split('__s')[1], 10) || 0
+              const parentLg = sLogs[parentId] || {}
+              if (!parentLg.completed) {
+                onLogFlight(student.id, viewCourse, parentId, { ...parentLg, completed: true, splitContinuing: undefined })
+              }
+              splitKeysFor(sLogs, parentId).forEach((sk) => {
+                const num = parseInt(sk.split('__s')[1], 10) || 0
+                if (num < currentNum) {
+                  const slg = sLogs[sk] || {}
+                  if (!slg.completed) {
+                    onLogFlight(student.id, viewCourse, sk, { ...slg, completed: true, splitContinuing: undefined })
+                  }
+                }
+              })
+            }
             // If this was a repeat attempt marked Completed ✓, also mark the
             // original (parent) lesson AND every earlier repeat attempt complete.
             // (Completing a later attempt implies all prior attempts are done too.)
@@ -654,7 +912,7 @@ export default function StudentDetail({
               // Parent (original) lesson
               const parentLg = sLogs[parentId] || {}
               if (!parentLg.completed) {
-                onLogFlight(student.id, parentId, { ...parentLg, completed: true })
+                onLogFlight(student.id, viewCourse, parentId, { ...parentLg, completed: true })
               }
 
               // Each earlier repeat attempt (__r1 ... __r(N-1))
@@ -663,7 +921,7 @@ export default function StudentDetail({
                 if (num < currentNum) {
                   const rlg = sLogs[rk] || {}
                   if (!rlg.completed) {
-                    onLogFlight(student.id, rk, { ...rlg, completed: true })
+                    onLogFlight(student.id, viewCourse, rk, { ...rlg, completed: true })
                   }
                 }
               })
@@ -694,12 +952,12 @@ export default function StudentDetail({
               const nums = existing.map((k) => parseInt(k.split('__r')[1], 10) || 0)
               const currentNum = parseInt(logLesson.key.split('__r')[1], 10) || 0
               const nextNum = Math.max(currentNum, ...(nums.length ? nums : [0])) + 1
-              onLogFlight(student.id, `${parentId}__r${nextNum}`, {})
+              onLogFlight(student.id, viewCourse, `${parentId}__r${nextNum}`, {})
             }
 
             setLogLesson(null)
           }}
-          onClear={() => { onClearLesson(student.id, logLesson.key); setLogLesson(null) }}
+          onClear={() => { onClearLesson(student.id, viewCourse, logLesson.key); setLogLesson(null) }}
           onClose={() => setLogLesson(null)}
         />
       )}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AIRCRAFT_LIST, AIRCRAFT_RATES } from '../../data/constants'
 
 /**
  * Simplified flight log:
@@ -12,18 +13,23 @@ import { useState } from 'react'
  * - XC / Hood / Night are tracked as REQUIREMENTS (shown above) but not entered
  *   per-lesson; they're considered met by completing the lesson per the syllabus.
  */
-export default function LogFlightModal({ lesson, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, onSave, onClear, onClose }) {
+export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCombined = false, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, defaultAircraft, onSave, onClear, onClose }) {
   const hasExisting = existing && Object.keys(existing).length > 0
 
-  // Targets from the lesson definition
-  const tDual = lesson.d || 0
-  const tSolo = lesson.s || 0
-  const tSim  = lesson.sm || 0
-  const tXC   = lesson.x || 0
-  const tHood = lesson.i || 0
-  const tNight = lesson.n || 0
-  const tGround = lesson.g || 0
-  const tTotal  = lesson.t || (tDual + tSolo + tSim)
+  // Targets from the lesson definition. When the user opts to combine with a
+  // sibling lesson (e.g. Private 2 8.1 + 8.2), we add the sibling's targets
+  // on top so the placeholder & requirements box show ~3.0 hrs instead of ~1.0.
+  const [combineChecked, setCombineChecked] = useState(!!siblingAlreadyCombined)
+  const [splitChecked, setSplitChecked] = useState(false)
+  const sib = combineChecked && siblingLesson ? siblingLesson : null
+  const tDual   = (lesson.d  || 0) + (sib?.d  || 0)
+  const tSolo   = (lesson.s  || 0) + (sib?.s  || 0)
+  const tSim    = (lesson.sm || 0) + (sib?.sm || 0)
+  const tXC     = (lesson.x  || 0) + (sib?.x  || 0)
+  const tHood   = (lesson.i  || 0) + (sib?.i  || 0)
+  const tNight  = (lesson.n  || 0) + (sib?.n  || 0)
+  const tGround = (lesson.g  || 0) + (sib?.g  || 0)
+  const tTotal  = (lesson.t  || (tDual + tSolo + tSim)) + (sib ? (sib.t || ((sib.d||0)+(sib.s||0)+(sib.sm||0))) : 0)
 
   // Determine lesson mode for the flight-time input
   const isMixed = tDual > 0 && tSolo > 0           // both dual & solo (rare — e.g. Private 5.2/5.3)
@@ -35,6 +41,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
   const [form, setForm] = useState({
     date:        existing.date        || new Date().toISOString().slice(0, 10),
     instructor:  existing.instructor  || defaultInstructor || '',
+    aircraft:    existing.aircraft    || defaultAircraft   || '',
     // For mixed (dual + solo) lessons we collect Dual and Solo separately so the
     // instructor records what actually happened, not a proportional split.
     flight:      existingFlight > 0 && !isMixed ? existingFlight.toString() : '',
@@ -45,9 +52,16 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
     repeatedLib: existing.repeatedLib || false,
     repeatedOop: existing.repeatedOop || false,
     incomplete:  existing.incomplete  || false,
+    paidOop:     existing.paidOop     || false,
     notes:       existing.notes       || '',
   })
-  const [customInstr, setCustomInstr] = useState(false)
+  // If the prefilled instructor name doesn't match any roster entry (e.g. the
+  // logged-in user registered as a name that isn't on the instructor list yet),
+  // start in custom-text mode with their name already typed instead of showing
+  // an empty "— select instructor —" dropdown.
+  const initialInstructorName = existing.instructor || defaultInstructor || ''
+  const matchesRoster = instructors.some((i) => i.name === initialInstructorName)
+  const [customInstr, setCustomInstr] = useState(!!initialInstructorName && !matchesRoster)
   const [repeatAgainChecked, setRepeatAgainChecked] = useState(false)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const hasInstructors = instructors.length > 0
@@ -81,9 +95,17 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
     // (allocated to dual/solo/sim above) and Ground time are tracked per-attempt.
     onSave({
       ...form,
+      // Don't persist an empty aircraft string — leave it undefined so the
+      // calc layer falls back to the student's default aircraft cleanly.
+      aircraft: form.aircraft || undefined,
       dual, solo, sim, ground,
       xc: 0, hood: 0, night: 0,
       _repeatAgain: repeatAgainChecked,
+      _combineWith: combineChecked && lesson.combinableWith ? lesson.combinableWith : undefined,
+      // Explicitly signal "uncombine" so StudentDetail can clear the sibling's
+      // combinedFrom flag when the box was unchecked.
+      _uncombineSibling: !combineChecked && siblingAlreadyCombined && lesson.combinableWith ? lesson.combinableWith : undefined,
+      _splitContinuing: splitChecked && lesson.splittable ? true : undefined,
     })
   }
 
@@ -113,7 +135,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
             {/* Lesson requirements (read-only reference) */}
             <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#075985', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-                Lesson Requirements
+                {combineChecked && siblingLesson ? `Combined Lesson Requirements (${lesson.id} + ${siblingLesson.id})` : 'Lesson Requirements'}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 13 }}>
                 {tTotal  > 0 && <ReqStat label="Total"  value={tTotal} />}
@@ -132,11 +154,20 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
               )}
             </div>
 
-            {/* Date + Instructor */}
-            <div className="grid2">
+            {/* Date + Instructor + Aircraft */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div>
                 <label>Date</label>
                 <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
+              </div>
+              <div>
+                <label>Aircraft</label>
+                <select value={form.aircraft} onChange={(e) => set('aircraft', e.target.value)}>
+                  <option value="">— student default —</option>
+                  {AIRCRAFT_LIST.map((a) => (
+                    <option key={a} value={a}>{a} — ${AIRCRAFT_RATES[a] || 0}/hr</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label>Instructor</label>
@@ -154,10 +185,14 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <select value={form.instructor} onChange={(e) => set('instructor', e.target.value)} style={{ flex: 1 }}>
+                    <select
+                      value={form.instructor}
+                      onChange={(e) => set('instructor', e.target.value)}
+                      style={{ flex: 1, textAlign: 'center', textAlignLast: 'center' }}
+                    >
                       <option value="">— select instructor —</option>
                       {instructors.map((i) => (
-                        <option key={i.name} value={i.name}>{i.name}  ({i.cert})</option>
+                        <option key={i.name} value={i.name}>{i.name}</option>
                       ))}
                     </select>
                     <button className="btn btn-sm" onClick={() => { setCustomInstr(true); set('instructor', '') }}>✏</button>
@@ -176,7 +211,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     type="number" step="0.1" min="0"
                     value={form.dualHrs}
                     onChange={(e) => set('dualHrs', e.target.value)}
-                    placeholder={tDual.toFixed(1)}
+                    placeholder={`e.g. ${tDual.toFixed(1)}`}
                   />
                 </div>
                 <div>
@@ -185,7 +220,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     type="number" step="0.1" min="0"
                     value={form.soloHrs}
                     onChange={(e) => set('soloHrs', e.target.value)}
-                    placeholder={tSolo.toFixed(1)}
+                    placeholder={`e.g. ${tSolo.toFixed(1)}`}
                   />
                 </div>
                 <div>
@@ -194,7 +229,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     type="number" step="0.1" min="0"
                     value={form.ground}
                     onChange={(e) => set('ground', e.target.value)}
-                    placeholder={tGround > 0 ? tGround.toFixed(1) : '0.0'}
+                    placeholder={tGround > 0 ? `e.g. ${tGround.toFixed(1)}` : 'e.g. 0.0'}
                   />
                 </div>
                 {((parseFloat(form.dualHrs) || 0) + (parseFloat(form.soloHrs) || 0)) > 0 && (
@@ -215,7 +250,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     type="number" step="0.1" min="0"
                     value={form.flight}
                     onChange={(e) => set('flight', e.target.value)}
-                    placeholder={tTotal > 0 ? tTotal.toFixed(1) : '0.0'}
+                    placeholder={tTotal > 0 ? `e.g. ${tTotal.toFixed(1)}` : 'e.g. 0.0'}
                   />
                 </div>
                 <div>
@@ -224,7 +259,7 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     type="number" step="0.1" min="0"
                     value={form.ground}
                     onChange={(e) => set('ground', e.target.value)}
-                    placeholder={tGround > 0 ? tGround.toFixed(1) : '0.0'}
+                    placeholder={tGround > 0 ? `e.g. ${tGround.toFixed(1)}` : 'e.g. 0.0'}
                   />
                 </div>
               </div>
@@ -240,23 +275,14 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                 // and "Unsuccessful" (the evaluation criteria weren't met — bust).
                 const isCheckLesson = lesson.sc || lesson.fsc || lesson.pc
                 const failLabel = isCheckLesson ? 'Unsuccessful' : 'Incomplete'
-                // Repeat (Lib/OOP) only makes sense after the original has been
-                // attempted (some hours logged or marked done). Until then, the
-                // boxes are disabled with a tooltip explaining why — prevents the
-                // confusing "marked repeat → spawned an empty future row" path.
-                const hasAttemptLogged = !!(
-                  existing.completed || existing.dual || existing.solo ||
-                  existing.sim || existing.ground
-                )
-                const repeatNeedsPriorAttempt = !isRepeatAttempt && !hasAttemptLogged
                 if (isRepeatAttempt) {
                   return [['completed', 'Completed ✓'], ['incomplete', failLabel]]
                 }
                 return [
                   ['completed',   'Completed ✓', false],
                   ['repeatedLib', 'Repeat (Lib)',
-                    repeatNeedsPriorAttempt || lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
-                  ['repeatedOop', 'Repeat (OOP)', repeatNeedsPriorAttempt],
+                    lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
+                  ['repeatedOop', 'Repeat (OOP)', false],
                   ['incomplete',  failLabel, false],
                 ]
               })().map(([k, label, disabled = false]) => (
@@ -269,8 +295,11 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                   }}
                   title={
                     disabled && (k === 'repeatedLib' || k === 'repeatedOop')
-                      ? (!existing.completed && !existing.dual && !existing.solo && !existing.sim && !existing.ground)
-                        ? 'Log this attempt first — Repeat is only available after an attempt has been recorded'
+                      ? ((parseFloat(form.flight) || 0) === 0 &&
+                         (parseFloat(form.dualHrs) || 0) === 0 &&
+                         (parseFloat(form.soloHrs) || 0) === 0 &&
+                         !existing.completed && !existing.dual && !existing.solo && !existing.sim && !existing.ground)
+                        ? 'Enter flight time first — Repeat is only available after an attempt is recorded'
                         : k === 'repeatedLib'
                           ? (lesson.sc || lesson.fsc || lesson.pc)
                             ? 'Stage check / progress check repeats must be Out of Pocket'
@@ -336,6 +365,42 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                   ? `${lesson.fsc ? 'Final stage check' : lesson.sc ? 'Stage check' : 'Progress check'}: any repeat must be Out of Pocket and a Training Review is required.`
                   : 'A Liberty-funded repeat is already used on another lesson — any further repeats must be Out of Pocket.'}
               </div>
+            )}
+
+            {/* "Combine with sibling lesson" — for lesson pairs that can be
+                flown together as a single flight (e.g. Private 2 8.1 + 8.2). */}
+            {lesson.combinableWith && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#075985', borderTop: '1px dashed #e5e7eb', paddingTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={combineChecked}
+                  onChange={(e) => setCombineChecked(e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                Combined with lesson {lesson.combinableWith}
+                <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>
+                  — marks lesson {lesson.combinableWith} complete with this same flight
+                </span>
+              </label>
+            )}
+
+            {/* "Split — finish later" — for long lessons (Commercial 3) where
+                the student does some hours one day and finishes the rest on
+                another. Spawns a continuation row that bills as Liberty-funded
+                (not a repeat). */}
+            {lesson.splittable && !isRepeatAttempt && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#075985', borderTop: '1px dashed #e5e7eb', paddingTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={splitChecked}
+                  onChange={(e) => setSplitChecked(e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                Split — finish later
+                <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>
+                  — saves this partial session and spawns a continuation row
+                </span>
+              </label>
             )}
 
             {/* Notes */}

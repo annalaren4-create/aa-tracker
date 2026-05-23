@@ -61,3 +61,28 @@ export const instrRate = (base, isCheck = false) => {
 export const INSTRUCTOR_CERTS = [
   'CFI', 'CFI/CFII', 'CFI/CFII/MEI',
 ]
+
+/**
+ * Liberty's number of funded lesson repeats per course (current policy).
+ * Past courses may have allowed more — store an override per courseHistory entry
+ * (`libRepeatsAllowed: 2`) so historical billing stays accurate.
+ */
+export const LU_FUNDED_REPEATS_PER_COURSE = 1
+
+/**
+ * Liberty's "least expensive approved aircraft" for each course. LU covers the
+ * aircraft cost at this rate; if a student flies a more expensive aircraft, the
+ * per-hour difference is charged out of pocket (see calcProgress).
+ */
+export const LU_STANDARD_AIRCRAFT = {
+  'Private 1':                'C-172-L-P',
+  'Private 2':                'C-172-L-P',
+  'Instrument':               'C-172-S',
+  'Commercial 1':             'C-172-L-P',
+  'Commercial 2':             'C-172-L-P',
+  'Commercial 3':             'C-172-L-P',
+  'CFI':                      'C-172-L-P',
+  'CFII':                     'C-172-S',
+  'Multi Engine':             'PA-30',
+  'Multi Engine Instructor':  'PA-30',
+}
