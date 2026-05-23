@@ -22,13 +22,19 @@ function getBudgetPace(p) {
   if (projected < p.flatRate * 0.95)      status = 'under'
   else if (projected > p.flatRate * 1.05) status = 'over'
   else                                    status = 'on-track'
-  return { spendPct, expectedPct, projected, status, remaining }
+  // "At risk" = burning budget faster than progress. If spend% is more than
+  // 20 percentage points ahead of completion% AND >50% of budget used, flag it —
+  // these are students chiefs need to spot first when skimming the dashboard.
+  const atRisk = spendPct > 50 && (spendPct - expectedPct) > 20
+  return { spendPct, expectedPct, projected, status, remaining, atRisk }
 }
 
 export default function ChiefDash({
   account, students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent, onDeleteStudentAccount,
-  onAddInstructor, onDeleteInstructor, onUpdateInstructor, calcProgress, onSignOut,
+  onAddInstructor, onDeleteInstructor, onUpdateInstructor,
+  roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
+  calcProgress, onSignOut,
 }) {
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
@@ -298,6 +304,10 @@ export default function ChiefDash({
           onClose={() => setShowManageInstr(false)}
           activeLocation={activeLocation}
           myName={account?.name}
+          isChief={account?.role === 'chief'}
+          roleRequests={roleRequests}
+          onSubmitRoleRequest={onSubmitRoleRequest}
+          onResolveRoleRequest={onResolveRoleRequest}
         />
       )}
     </div>
@@ -399,6 +409,15 @@ function StudentRow({ student, progress: p, pace, striped, myName, onView, onDel
               {myRole === 'Primary' ? '★ Primary' : 'Secondary'}
             </span>
           )}
+          {pace?.atRisk && (
+            <span
+              className="tag"
+              style={{ background: '#fef2f2', color: '#dc2626', fontSize: 9, padding: '1px 5px', flexShrink: 0, fontWeight: 700 }}
+              title={`Burning budget faster than progress: ${Math.round(pace.spendPct)}% spent vs ${Math.round(pace.expectedPct)}% complete`}
+            >
+              ⚠ At risk
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           Primary instructor: {student.primaryInstructor}
@@ -418,15 +437,16 @@ function StudentRow({ student, progress: p, pace, striped, myName, onView, onDel
         </span>
       </div>
 
-      {/* Progress */}
+      {/* Progress — bar turns red when the student is "at risk" (burning budget
+          much faster than completing lessons) so chiefs can spot them at a glance. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <div style={{ flex: 1, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
           <div style={{
             height: '100%', width: `${p.pct}%`, borderRadius: 3,
-            background: p.pct >= 100 ? '#16a34a' : '#1a3a5c',
+            background: p.pct >= 100 ? '#16a34a' : (pace?.atRisk ? '#dc2626' : '#1a3a5c'),
           }} />
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', minWidth: 30, textAlign: 'right' }}>{p.pct}%</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: pace?.atRisk ? '#dc2626' : '#374151', minWidth: 30, textAlign: 'right' }}>{p.pct}%</span>
       </div>
 
       {/* Budget Pace bar */}

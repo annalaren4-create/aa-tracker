@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { LOCATIONS, INSTRUCTOR_CERTS } from '../../data/constants'
 
-export default function ManageInstructorsModal({ instructors, onAdd, onDelete, onUpdate, onClose, activeLocation, myName }) {
+export default function ManageInstructorsModal({
+  instructors, onAdd, onDelete, onUpdate, onClose, activeLocation, myName, isChief = false,
+  roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
+}) {
   // Default the base filter to the LOGGED-IN instructor's own base, falling back
   // to the dashboard's active location, then to 'All'. So when Bob Hepp (KHEF)
   // opens this modal, he immediately sees the KHEF roster.
@@ -37,12 +40,18 @@ export default function ManageInstructorsModal({ instructors, onAdd, onDelete, o
   const cancelEdit = () => setEditing(null)
   const saveEdit = () => {
     if (!draftName.trim()) return
+    // Non-chiefs may not change Chief or Stage Check designations on any
+    // instructor (including themselves). Preserve the existing flags instead
+    // of trusting the draft values from the form.
+    const orig = instructors.find((i) => i.name === editing.name && i.base === editing.base)
+    const safeChief      = isChief ? draftChief      : !!orig?.lineRate
+    const safeStageCheck = isChief ? draftStageCheck : !!orig?.stageCheck
     onUpdate?.(editing.name, editing.base, {
       name: draftName.trim(),
       cert: draftCert,
       base: draftBase,
-      lineRate: draftChief ? 110 : undefined,   // setting to undefined removes the field
-      stageCheck: draftStageCheck || undefined,
+      lineRate: safeChief ? 110 : undefined,    // undefined removes the field
+      stageCheck: safeStageCheck || undefined,
       phone: draftPhone.trim() || undefined,
       email: draftEmail.trim() || undefined,
     })
@@ -95,6 +104,30 @@ export default function ManageInstructorsModal({ instructors, onAdd, onDelete, o
         </div>
 
         <div className="modal-body">
+
+          {/* Pending role-change requests — visible to Chiefs only */}
+          {isChief && roleRequests.length > 0 && (
+            <div style={{ marginBottom: 16, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                Pending designation requests ({roleRequests.length})
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {roleRequests.map((req) => (
+                  <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, background: '#fff', padding: '6px 10px', borderRadius: 6, border: '1px solid #fef3c7' }}>
+                    <div style={{ flex: 1 }}>
+                      <strong>{req.instructorName}</strong>
+                      <span style={{ color: '#6b7280' }}> · {req.base} · requests </span>
+                      <span style={{ color: '#92400e', fontWeight: 600 }}>
+                        {req.field === 'chief' ? 'Chief / Asst Chief' : 'Stage Check Instructor'}
+                      </span>
+                    </div>
+                    <button className="btn btn-sm btn-primary" onClick={() => onResolveRoleRequest?.(req.id, true)}>Approve</button>
+                    <button className="btn btn-sm" onClick={() => onResolveRoleRequest?.(req.id, false)}>Deny</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Add row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 100px auto', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}>
@@ -183,26 +216,83 @@ export default function ManageInstructorsModal({ instructors, onAdd, onDelete, o
                                 <button className="btn btn-sm" onClick={cancelEdit} title="Cancel (Esc)">✕</button>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#374151' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#374151', flexWrap: 'wrap' }}>
+                              {/* Chief / Stage Check designations can only be set by
+                                  a logged-in Chief Instructor — prevents anyone from
+                                  promoting themselves. Non-chiefs see them as read-only. */}
+                              <label
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 6,
+                                  cursor: isChief ? 'pointer' : 'not-allowed',
+                                  opacity: isChief ? 1 : 0.55,
+                                }}
+                                title={isChief ? '' : 'Only a Chief Instructor can change this designation'}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={draftChief}
+                                  disabled={!isChief}
                                   onChange={(e) => setDraftChief(e.target.checked)}
                                   style={{ width: 'auto' }}
                                 />
                                 Chief / Asst Chief <span style={{ color: '#9ca3af' }}>($110 line rate)</span>
                               </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                              <label
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 6,
+                                  cursor: isChief ? 'pointer' : 'not-allowed',
+                                  opacity: isChief ? 1 : 0.55,
+                                }}
+                                title={isChief ? '' : 'Only a Chief Instructor can change this designation'}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={draftStageCheck}
+                                  disabled={!isChief}
                                   onChange={(e) => setDraftStageCheck(e.target.checked)}
                                   style={{ width: 'auto' }}
                                 />
                                 Stage Check Instructor
                               </label>
                             </div>
+                            {!isChief && (() => {
+                              // Show "Request" buttons only when the instructor is
+                              // editing their OWN profile and doesn't already have
+                              // that designation or a pending request.
+                              const isOwnProfile = myName && editing.name === myName
+                              if (!isOwnProfile) {
+                                return (
+                                  <div style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}>
+                                    Chief / Stage Check designations are managed by a Chief Instructor.
+                                  </div>
+                                )
+                              }
+                              const hasChief        = !!ins.lineRate
+                              const hasStage        = !!ins.stageCheck
+                              const pendingChief    = roleRequests.some((r) => r.instructorName === ins.name && r.base === ins.base && r.field === 'chief')
+                              const pendingStage    = roleRequests.some((r) => r.instructorName === ins.name && r.base === ins.base && r.field === 'stageCheck')
+                              const reqDesignation  = (field) => {
+                                const ok = onSubmitRoleRequest?.({ instructorName: ins.name, base: ins.base, field })
+                                if (ok === false) alert('You already have a request pending for that designation.')
+                              }
+                              return (
+                                <div style={{ fontSize: 11, color: '#6b7280', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  Need a designation?
+                                  {!hasChief && !pendingChief && (
+                                    <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('chief')}>
+                                      Request Chief
+                                    </button>
+                                  )}
+                                  {pendingChief && <span style={{ color: '#b45309', fontSize: 10 }}>Chief request pending</span>}
+                                  {!hasStage && !pendingStage && (
+                                    <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('stageCheck')}>
+                                      Request Stage Check
+                                    </button>
+                                  )}
+                                  {pendingStage && <span style={{ color: '#b45309', fontSize: 10 }}>Stage Check request pending</span>}
+                                </div>
+                              )
+                            })()}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 6 }}>
                               <div>
                                 <label style={{ fontSize: 11, color: '#6b7280' }}>Phone</label>

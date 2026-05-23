@@ -67,6 +67,36 @@ export default function App() {
     return merged
   })
   const [logs, setLogs] = useState(() => lsGet('logs') || {})
+  // Role-change requests submitted by instructors, pending Chief approval.
+  // Each item: { id, instructorName, base, field: 'chief'|'stageCheck', requestedAt, note }
+  const [roleRequests, setRoleRequests] = useState(() => lsGet('roleRequests') || [])
+  const saveRoleRequests = (arr) => { setRoleRequests(arr); lsSet('roleRequests', arr) }
+  const submitRoleRequest = (req) => {
+    // Dedupe — don't queue a second request for the same field on the same instructor
+    const exists = roleRequests.find((r) =>
+      r.instructorName === req.instructorName &&
+      r.base === req.base &&
+      r.field === req.field
+    )
+    if (exists) return false
+    saveRoleRequests([...roleRequests, { ...req, id: uid(), requestedAt: new Date().toISOString() }])
+    return true
+  }
+  const resolveRoleRequest = (id, approve) => {
+    const req = roleRequests.find((r) => r.id === id)
+    if (!req) return
+    if (approve) {
+      // Apply the change
+      const next = instructors.map((i) => {
+        if (i.name !== req.instructorName || i.base !== req.base) return i
+        if (req.field === 'chief')      return { ...i, lineRate: 110 }
+        if (req.field === 'stageCheck') return { ...i, stageCheck: true }
+        return i
+      })
+      saveInstructors(next)
+    }
+    saveRoleRequests(roleRequests.filter((r) => r.id !== id))
+  }
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [activeLocation, setActiveLocation] = useState('All')
   const [currentAccount, setCurrentAccount] = useState(null)
@@ -250,6 +280,9 @@ export default function App() {
       onAddInstructor={addInstructor}
       onDeleteInstructor={deleteInstructor}
       onUpdateInstructor={updateInstructor}
+      roleRequests={roleRequests}
+      onSubmitRoleRequest={submitRoleRequest}
+      onResolveRoleRequest={resolveRoleRequest}
       calcProgress={calc}
       onSignOut={handleSignOut}
     />
@@ -268,6 +301,9 @@ export default function App() {
       onAddInstructor={addInstructor}
       onDeleteInstructor={deleteInstructor}
       onUpdateInstructor={updateInstructor}
+      roleRequests={roleRequests}
+      onSubmitRoleRequest={submitRoleRequest}
+      onResolveRoleRequest={resolveRoleRequest}
       calcProgress={calc}
       account={currentAccount}
       onSignOut={handleSignOut}
@@ -286,6 +322,7 @@ export default function App() {
       logs={logs}
       instructors={instructors}
       isInstructor={isInstructor}
+      account={currentAccount}
       onLogFlight={logFlight}
       onClearLesson={clearLesson}
       onUpdateStudent={updateStudent}

@@ -4,15 +4,17 @@ import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, overUnder, repeatKeysFor } from '../utils/calculations'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
+import LedgerModal from './modals/LedgerModal'
 
 // Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Date · Status
 const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 64px 56px 1fr 88px 64px'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
+  student, logs, instructors, isInstructor, account, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
 }) {
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
+  const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
   const [editingDate, setEditingDate] = useState(null)
   const [editingAircraft, setEditingAircraft] = useState(false)
   const [editingPrimary, setEditingPrimary] = useState(false)
@@ -82,6 +84,26 @@ export default function StudentDetail({
   }
   const policyViolations = [...stageCheckLibViolations, ...extraLibViolations]
   const needsTR = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
+
+  // Pace estimate: based on completed lessons per week since the student's first
+  // logged flight. Returns null when there's not enough history to project (need
+  // at least 2 distinct flight dates).
+  const paceProjection = (() => {
+    const allLogs = Object.values(sLogs).filter((lg) => lg && lg.date)
+    if (allLogs.length < 2) return null
+    const dates = allLogs.map((lg) => new Date(lg.date + 'T00:00:00').getTime()).sort((a, b) => a - b)
+    const firstDate = dates[0]
+    const lastDate  = dates[dates.length - 1]
+    const daysActive = Math.max(1, (lastDate - firstDate) / 86_400_000)
+    const completedLessons = Object.values(sLogs).filter((lg) => lg?.completed).length
+    if (completedLessons === 0) return null
+    const lessonsPerWeek = (completedLessons / daysActive) * 7
+    const remaining = Math.max(0, progress.total - progress.completed)
+    if (remaining === 0) return { lessonsPerWeek, finishDate: null, weeksRemaining: 0, done: true }
+    const weeksRemaining = remaining / lessonsPerWeek
+    const finishDate = new Date(Date.now() + weeksRemaining * 7 * 86_400_000)
+    return { lessonsPerWeek, finishDate, weeksRemaining, done: false }
+  })()
 
   return (
     <div>
@@ -260,16 +282,35 @@ export default function StudentDetail({
                 <div className="progress-fill" style={{ width: `${progress.pct}%`, background: '#1a3a5c' }} />
               </div>
             </div>
+            {paceProjection && !paceProjection.done && (
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }} title={`Based on ${paceProjection.lessonsPerWeek.toFixed(1)} lessons/week pace since first flight`}>
+                Projected finish:{' '}
+                <span style={{ fontWeight: 600, color: '#374151' }}>
+                  {paceProjection.finishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                <span style={{ color: '#9ca3af', marginLeft: 6 }}>
+                  ({paceProjection.lessonsPerWeek.toFixed(1)}/wk)
+                </span>
+              </div>
+            )}
+            {paceProjection?.done && (
+              <div style={{ fontSize: 11, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>✓ All lessons complete</div>
+            )}
+            {!paceProjection && progress.completed > 0 && (
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                Need more logged flights to project pace
+              </div>
+            )}
           </StatCard>
 
-          <StatCard label="Hours flown" value={`${totFlown.toFixed(1)}h`}>
+          <StatCard label="Hours flown" value={`${totFlown.toFixed(1)}h`} onClick={() => setLedgerMode('hours')}>
             <div style={{ fontSize: 12, marginTop: 4, color: ou > 0 ? '#b45309' : ou < 0 ? '#15803d' : '#6b7280' }}>
               {ou >= 0 ? '+' : ''}{ou.toFixed(1)}h vs {parseFloat(course.targetTotal).toFixed(1)}h target
             </div>
           </StatCard>
 
           {isInstructor && (
-            <StatCard label="Est. cost" value={`$${progress.cost.toLocaleString()}`}>
+            <StatCard label="Est. cost" value={`$${progress.cost.toLocaleString()}`} onClick={() => setLedgerMode('cost')}>
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
               </div>
@@ -283,6 +324,11 @@ export default function StudentDetail({
                   proj. <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projected.toLocaleString()}</span> at target hrs
                 </div>
               )}
+              {progress.projectedWithRepeat != null && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }} title="Adds a typical 1-repeat buffer (2.0 hr dual + 0.7 hr ground) on top of the baseline projection.">
+                  w/ repeat <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projectedWithRepeat.toLocaleString()}</span>
+                </div>
+              )}
             </StatCard>
           )}
 
@@ -292,6 +338,7 @@ export default function StudentDetail({
                 label="LU balance"
                 value={remaining >= 0 ? `$${remaining.toLocaleString()}` : `-$${Math.abs(remaining).toLocaleString()}`}
                 valueColor={remaining < 0 ? '#dc2626' : '#15803d'}
+                onClick={() => setLedgerMode('balance')}
               >
                 <div className="budget-bar" style={{ marginTop: 6 }}>
                   <div className="budget-fill" style={{ width: `${Math.min(100, bp || 0).toFixed(0)}%`, background: budgetColor(bp) }} />
@@ -318,45 +365,56 @@ export default function StudentDetail({
             display: 'grid', gridTemplateColumns: COLS, gap: 4,
             padding: '7px 10px', fontSize: 11, color: '#6b7280', fontWeight: 500,
             borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
-            minWidth: 920,
+            minWidth: 1080,
           }}>
             <span>Lesson</span>
             <span style={{ textAlign: 'right' }}>Dual</span>
             <span style={{ textAlign: 'right' }}>Solo</span>
             <span style={{ textAlign: 'right' }}>XC</span>
-            <span style={{ textAlign: 'right' }}>Instr</span>
-            <span style={{ textAlign: 'right' }}>Sim</span>
-            <span style={{ textAlign: 'right' }}>Tgt Tot</span>
-            <span style={{ textAlign: 'right' }}>Actual Flt</span>
-            <span style={{ textAlign: 'right' }}>Over/Under</span>
+            <span style={{ textAlign: 'right' }} title="Hood / instrument time">Instr</span>
+            <span style={{ textAlign: 'right' }} title="Simulator hours">Sim</span>
+            <span style={{ textAlign: 'right' }} title="Target total flight time for the lesson">Target Total</span>
+            <span style={{ textAlign: 'right' }} title="Actual flight time logged this attempt">Actual Flight</span>
+            <span style={{ textAlign: 'right' }} title="Actual minus target — amber if over, green if under">Over/Under</span>
             <span style={{ textAlign: 'right' }}>Ground</span>
             <span>Objectives</span>
             <span style={{ textAlign: 'center' }}>Date</span>
             <span style={{ textAlign: 'center' }}>Status</span>
           </div>
-          {/* Legend */}
-          <div style={{ padding: '3px 10px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 9, color: '#9ca3af', display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span>Dual/Solo/XC/Instr/Sim columns = syllabus targets (read-only).</span>
-            <span>Actual Flt &amp; Ground are entered per attempt.</span>
-            <span>Over/Under = actual − target.</span>
+          {/* Legend — color-banded for scannability. The read-only target columns
+              get a subtle gray strip so they visually group, distinguishing them
+              from the editable Actual Flight / Ground columns. */}
+          <div style={{ padding: '6px 12px', background: '#f1f5f9', borderBottom: '1px solid #e5e7eb', fontSize: 10, color: '#374151', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>
+              <span style={{ display: 'inline-block', width: 8, height: 8, background: '#e5e7eb', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
+              <strong>Dual · Solo · XC · Instr · Sim · Target Total</strong> = syllabus targets (read-only)
+            </span>
+            <span>
+              <span style={{ display: 'inline-block', width: 8, height: 8, background: '#bfdbfe', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
+              <strong>Actual Flight · Ground</strong> = entered per attempt
+            </span>
+            <span style={{ color: '#6b7280' }}>Over/Under = actual − target · amber over, green under</span>
           </div>
 
           {course.lessons.flatMap((lesson) => {
             // Build an "expanded" list: the original lesson row, plus a row for every
-            // repeat-attempt key in storage. If the parent is flagged repeat but no
-            // repeat row exists yet, auto-add an empty `__r1` placeholder. Also append
-            // an "+ Add another repeat" affordance whenever the parent is flagged or
-            // any repeats exist, so the instructor can log unlimited repeats.
+            // repeat-attempt key in storage. Then, if the LATEST entry (original or
+            // newest repeat) was marked Repeat (Lib/OOP) or Incomplete, append an
+            // empty placeholder row so the instructor has somewhere to log the next
+            // attempt without having to dig through menus.
             const items = [{ key: lesson.id, isRepeat: false }]
             const repeatKeys = repeatKeysFor(sLogs, lesson.id)
             repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
             const origLg = sLogs[lesson.id] || {}
-            const parentFlagged = origLg.repeatedLib || origLg.repeatedOop
-            // If parent is flagged but no repeat rows exist yet, show a placeholder
-            // for __r1. Additional repeats are created via the "Repeat again" button
-            // inside the repeat log modal.
-            if (parentFlagged && repeatKeys.length === 0) {
-              items.push({ key: `${lesson.id}__r1`, isRepeat: true, pending: true })
+            // Find the latest log entry for this lesson chain.
+            const latestKey = repeatKeys.length > 0 ? repeatKeys[repeatKeys.length - 1] : lesson.id
+            const latestLg  = sLogs[latestKey] || {}
+            const latestNeedsFollowup =
+              latestLg.repeatedLib || latestLg.repeatedOop || latestLg.incomplete
+            if (latestNeedsFollowup) {
+              const usedNums = repeatKeys.map((k) => parseInt(k.split('__r')[1], 10) || 0)
+              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
+              items.push({ key: `${lesson.id}__r${nextNum}`, isRepeat: true, pending: true })
             }
             return items
           }).map(({ key, isRepeat, pending }) => {
@@ -364,7 +422,16 @@ export default function StudentDetail({
             const baseId = key.split('__r')[0]
             const lesson = course.lessons.find((l) => l.id === baseId)
             const lg = sLogs[key] || {}
-            const status = lg.completed ? 'done' : Object.keys(lg).length > 0 ? 'partial' : 'pending'
+            // Status pill: "unsuccessful" (busted) gets its own treatment on
+            // stage/progress/final-stage checks; "incomplete" is distinct from
+            // "in prog" (which means partial data but no explicit flag).
+            const lessonDef = lesson  // alias for clarity
+            const isCheckLesson = lessonDef.sc || lessonDef.fsc || lessonDef.pc
+            const status = lg.completed
+              ? 'done'
+              : lg.incomplete
+                ? (isCheckLesson ? 'unsuccessful' : 'incomplete')
+                : Object.keys(lg).length > 0 ? 'partial' : 'pending'
             const origLg = sLogs[baseId] || {}
             // 0-based index of this repeat (1st repeat = 0, 2nd = 1, ...). We
             // derive it directly from the __rN suffix to avoid any dependency on
@@ -384,7 +451,7 @@ export default function StudentDetail({
                     ? 'rgba(220,38,38,.04)'
                     : lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
                   borderLeft: isRepeat ? '3px solid #dc2626' : undefined,
-                  minWidth: 920,
+                  minWidth: 1080,
                 }}
                 onClick={() => isInstructor && setLogLesson({ lesson, key })}
               >
@@ -436,7 +503,7 @@ export default function StudentDetail({
                 {/* Ground time logged this attempt — keeps the logged/target overlay */}
                 <LogCell logged={lg.ground} rec={lesson.g} />
 
-                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{lesson.o}</span>
+                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>{lesson.o}</span>
 
                 {/* Date cell — inline editable for instructors */}
                 <span
@@ -468,9 +535,11 @@ export default function StudentDetail({
                 </span>
 
                 <span style={{ textAlign: 'center' }}>
-                  {status === 'done'    && <span className="tag tag-green">done</span>}
-                  {status === 'partial' && <span className="tag tag-amber">in prog</span>}
-                  {status === 'pending' && <span className="tag tag-gray">pending</span>}
+                  {status === 'done'         && <span className="tag tag-green">done</span>}
+                  {status === 'partial'      && <span className="tag tag-amber">in prog</span>}
+                  {status === 'incomplete'   && <span className="tag tag-amber">incomplete</span>}
+                  {status === 'unsuccessful' && <span className="tag tag-red">unsuccessful</span>}
+                  {status === 'pending'      && <span className="tag tag-gray">pending</span>}
                 </span>
               </div>
             )
@@ -505,7 +574,7 @@ export default function StudentDetail({
                 display: 'grid', gridTemplateColumns: COLS, gap: 4,
                 padding: '8px 10px', background: '#f8fafc',
                 fontSize: 12, fontWeight: 600, borderTop: '2px solid #e5e7eb',
-                minWidth: 920,
+                minWidth: 1080,
               }}>
                 <span>Totals</span>
                 <span style={{ textAlign: 'right' }}>{fmt(targetDual)}</span>
@@ -531,6 +600,16 @@ export default function StudentDetail({
         </div>
       </div>
 
+      {ledgerMode && (
+        <LedgerModal
+          student={student}
+          logs={logs}
+          instructors={instructors}
+          mode={ledgerMode}
+          onClose={() => setLedgerMode(null)}
+        />
+      )}
+
       {showTR && (
         <TrainingReviewModal
           student={student}
@@ -549,6 +628,7 @@ export default function StudentDetail({
           instructors={instructors}
           libRepeatUsedElsewhere={libRepeats.some((l) => l.id !== logLesson.lesson.id)}
           isRepeatAttempt={logLesson.key.includes('__r')}
+          defaultInstructor={account?.role === 'instructor' || account?.role === 'chief' ? account?.name : undefined}
           isLastRepeat={(() => {
             if (!logLesson.key.includes('__r')) return false
             const parentId = logLesson.key.split('__r')[0]
@@ -656,10 +736,21 @@ function InstructorContact({ label, ins }) {
   )
 }
 
-function StatCard({ label, value, valueColor, valueSize = 20, children }) {
+function StatCard({ label, value, valueColor, valueSize = 20, children, onClick }) {
+  const interactive = !!onClick
   return (
-    <div className="stat-card">
-      <div className="stat-label">{label}</div>
+    <div
+      className="stat-card"
+      onClick={onClick}
+      style={interactive ? { cursor: 'pointer', transition: 'box-shadow .12s, transform .12s' } : undefined}
+      onMouseEnter={interactive ? (e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(26,58,92,.08)' } : undefined}
+      onMouseLeave={interactive ? (e) => { e.currentTarget.style.boxShadow = '' } : undefined}
+      title={interactive ? 'Click to open detailed ledger' : undefined}
+    >
+      <div className="stat-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{label}</span>
+        {interactive && <span style={{ fontSize: 10, color: '#9ca3af' }}>▸</span>}
+      </div>
       <div className="stat-val" style={{ fontSize: valueSize, color: valueColor }}>{value}</div>
       {children}
     </div>
@@ -690,9 +781,17 @@ function TargetCell({ value, bold = false }) {
 function LogCell({ logged, rec }) {
   const val = logged || 0
   const hasRec = rec > 0
-  const over = hasRec && val > rec        // strictly exceeded the target
+  const over = hasRec && val > rec
   const met  = hasRec && val >= rec && !over
-  // Color priority: red if over, green if met exactly, dark gray if logged but no rec, light gray if empty.
+  // When logged exactly equals the target, show one number with a ✓ instead of
+  // stacking the same value twice (which read as a UI glitch in feedback).
+  if (met) {
+    return (
+      <div style={{ textAlign: 'right', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+        {val.toFixed(1)} ✓
+      </div>
+    )
+  }
   const valColor = val === 0 ? '#d1d5db' : (over ? '#dc2626' : '#111827')
   return (
     <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
@@ -700,7 +799,7 @@ function LogCell({ logged, rec }) {
         {val > 0 ? val.toFixed(1) : '—'}
       </div>
       {hasRec && (
-        <div style={{ fontSize: 9, fontWeight: 600, color: over ? '#dc2626' : met ? '#16a34a' : '#2d6ab4' }}>
+        <div style={{ fontSize: 9, fontWeight: 600, color: over ? '#dc2626' : '#2d6ab4' }}>
           {rec.toFixed(1)}
         </div>
       )}

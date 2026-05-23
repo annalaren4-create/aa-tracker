@@ -15,8 +15,9 @@ function defaultAircraft(course) {
 const ROLE_OPTIONS = [
   { role: 'student',    roleLabel: 'Student',                    icon: '📋', desc: 'View your course progress and syllabus' },
   { role: 'instructor', roleLabel: 'Instructor',                 icon: '🧑‍✈️', desc: 'Manage students and log flight time' },
-  { role: 'chief',      roleLabel: 'Chief Instructor',           icon: '⭐', desc: 'Full access across all students and locations' },
-  { role: 'chief',      roleLabel: 'Assistant Chief Instructor', icon: '🌟', desc: 'Full access across all students and locations' },
+  { role: 'instructor', roleLabel: 'Check Pilot',                icon: '✓',  desc: 'Runs stage checks / progress checks / final stage checks — same access as Instructor' },
+  { role: 'chief',      roleLabel: 'Chief Instructor',           icon: '⭐', desc: 'Sets policy, manages instructor roster, approves Chief / Stage Check designations' },
+  { role: 'chief',      roleLabel: 'Assistant Chief Instructor', icon: '🌟', desc: 'Same dashboard access as Chief — helps run day-to-day operations at a specific base' },
 ]
 
 export default function Register({ students, instructors = [], calcProgress, onAddStudent, onSuccess, onBack }) {

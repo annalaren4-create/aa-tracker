@@ -159,6 +159,15 @@ export function calcProgress(student, logs, instructors = []) {
   const flatRate = student.school === 'Liberty University' ? LU_FLAT_RATES[student.course] : null
   const projected = Math.round(cost + remainingCost)
 
+  // "With repeat allowance" projection — mirrors the official syllabus assumption
+  // that most students will use Liberty's one funded repeat. Adds the cost of a
+  // typical extra lesson (2.0 hr dual + 0.7 hr ground at the student's rates).
+  const bufferLesson = { d: 2.0, g: 0.7 }
+  const repeatBufferCost = lessonExpectedCost(
+    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate
+  )
+  const projectedWithRepeat = Math.round(cost + remainingCost + repeatBufferCost)
+
   return {
     pct,
     flown: parseFloat(flown.toFixed(1)),
@@ -166,6 +175,8 @@ export function calcProgress(student, logs, instructors = []) {
     oopCost: Math.round(oopCost),            // out-of-pocket charges (do NOT count vs flat rate)
     totalCost: Math.round(cost + oopCost),   // total student-incurred charges
     projected,
+    projectedWithRepeat,
+    repeatBufferCost: Math.round(repeatBufferCost),
     completed,
     total,
     flatRate,

@@ -8,8 +8,9 @@ import ManageInstructorsModal from './modals/ManageInstructorsModal'
 export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent,
-  onAddInstructor, onDeleteInstructor, onUpdateInstructor, calcProgress,
-  account, onSignOut,
+  onAddInstructor, onDeleteInstructor, onUpdateInstructor,
+  roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
+  calcProgress, account, onSignOut,
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
@@ -143,6 +144,10 @@ export default function InstructorDash({
           onClose={() => setShowManageInstr(false)}
           activeLocation={activeLocation}
           myName={account?.name}
+          isChief={account?.role === 'chief'}
+          roleRequests={roleRequests}
+          onSubmitRoleRequest={onSubmitRoleRequest}
+          onResolveRoleRequest={onResolveRoleRequest}
         />
       )}
     </div>

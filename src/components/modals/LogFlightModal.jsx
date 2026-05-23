@@ -12,7 +12,7 @@ import { useState } from 'react'
  * - XC / Hood / Night are tracked as REQUIREMENTS (shown above) but not entered
  *   per-lesson; they're considered met by completing the lesson per the syllabus.
  */
-export default function LogFlightModal({ lesson, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, onSave, onClear, onClose }) {
+export default function LogFlightModal({ lesson, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, onSave, onClear, onClose }) {
   const hasExisting = existing && Object.keys(existing).length > 0
 
   // Targets from the lesson definition
@@ -29,13 +29,17 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
   const isMixed = tDual > 0 && tSolo > 0           // both dual & solo (rare — e.g. Private 5.2/5.3)
   const isSimOnly = tSim > 0 && tDual === 0 && tSolo === 0
 
-  // Pre-fill the "Flight time" input from any existing log
+  // Pre-fill the flight inputs from any existing log
   const existingFlight = (existing.dual || 0) + (existing.solo || 0) + (existing.sim || 0)
 
   const [form, setForm] = useState({
     date:        existing.date        || new Date().toISOString().slice(0, 10),
-    instructor:  existing.instructor  || '',
-    flight:      existingFlight > 0 ? existingFlight.toString() : '',
+    instructor:  existing.instructor  || defaultInstructor || '',
+    // For mixed (dual + solo) lessons we collect Dual and Solo separately so the
+    // instructor records what actually happened, not a proportional split.
+    flight:      existingFlight > 0 && !isMixed ? existingFlight.toString() : '',
+    dualHrs:     isMixed && existing.dual ? existing.dual.toString() : '',
+    soloHrs:     isMixed && existing.solo ? existing.solo.toString() : '',
     ground:      existing.ground      || '',
     completed:   existing.completed   || false,
     repeatedLib: existing.repeatedLib || false,
@@ -52,15 +56,15 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
     const flight = parseFloat(form.flight) || 0
     const ground = parseFloat(form.ground) || 0
 
-    // Allocate the single "flight time" value into the lesson's flight buckets
+    // Allocate flight time into the lesson's billing buckets.
     let dual = 0, solo = 0, sim = 0
-    if (isSimOnly) {
+    if (isMixed) {
+      // Mixed lessons collect Dual and Solo as separate inputs so we record
+      // what actually happened rather than guessing a proportional split.
+      dual = parseFloat(form.dualHrs) || 0
+      solo = parseFloat(form.soloHrs) || 0
+    } else if (isSimOnly) {
       sim = flight
-    } else if (isMixed) {
-      // Split proportionally to the targets (e.g. d:1.0, s:0.8 → 55.6% / 44.4%)
-      const ratio = tDual / (tDual + tSolo)
-      dual = +(flight * ratio).toFixed(2)
-      solo = +(flight - dual).toFixed(2)
     } else if (tDual > 0) {
       dual = flight
     } else if (tSolo > 0) {
@@ -162,51 +166,100 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
               </div>
             </div>
 
-            {/* Actual hours flown */}
-            <div className="grid2">
-              <div>
-                <label>
-                  {isSimOnly ? 'Sim time' : isMixed ? 'Flight time (dual + solo)' : tSolo > 0 ? 'Solo flight time' : 'Flight time'}
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={form.flight}
-                  onChange={(e) => set('flight', e.target.value)}
-                  placeholder={tTotal > 0 ? tTotal.toFixed(1) : '0.0'}
-                />
+            {/* Actual hours flown — split into Dual + Solo for mixed lessons so
+                the logbook & billing math get accurate per-bucket hours. */}
+            {isMixed ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                  <label>Dual time</label>
+                  <input
+                    type="number" step="0.1" min="0"
+                    value={form.dualHrs}
+                    onChange={(e) => set('dualHrs', e.target.value)}
+                    placeholder={tDual.toFixed(1)}
+                  />
+                </div>
+                <div>
+                  <label>Solo time</label>
+                  <input
+                    type="number" step="0.1" min="0"
+                    value={form.soloHrs}
+                    onChange={(e) => set('soloHrs', e.target.value)}
+                    placeholder={tSolo.toFixed(1)}
+                  />
+                </div>
+                <div>
+                  <label>Ground time</label>
+                  <input
+                    type="number" step="0.1" min="0"
+                    value={form.ground}
+                    onChange={(e) => set('ground', e.target.value)}
+                    placeholder={tGround > 0 ? tGround.toFixed(1) : '0.0'}
+                  />
+                </div>
+                {((parseFloat(form.dualHrs) || 0) + (parseFloat(form.soloHrs) || 0)) > 0 && (
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#6b7280', marginTop: -4 }}>
+                    Total flight time entered:{' '}
+                    <strong style={{ color: '#374151' }}>
+                      {((parseFloat(form.dualHrs) || 0) + (parseFloat(form.soloHrs) || 0)).toFixed(1)} hr
+                    </strong>
+                    {tTotal > 0 && ` · target ${tTotal.toFixed(1)} hr`}
+                  </div>
+                )}
               </div>
-              <div>
-                <label>Ground time</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={form.ground}
-                  onChange={(e) => set('ground', e.target.value)}
-                  placeholder={tGround > 0 ? tGround.toFixed(1) : '0.0'}
-                />
+            ) : (
+              <div className="grid2">
+                <div>
+                  <label>{isSimOnly ? 'Sim time' : tSolo > 0 ? 'Solo flight time' : 'Flight time'}</label>
+                  <input
+                    type="number" step="0.1" min="0"
+                    value={form.flight}
+                    onChange={(e) => set('flight', e.target.value)}
+                    placeholder={tTotal > 0 ? tTotal.toFixed(1) : '0.0'}
+                  />
+                </div>
+                <div>
+                  <label>Ground time</label>
+                  <input
+                    type="number" step="0.1" min="0"
+                    value={form.ground}
+                    onChange={(e) => set('ground', e.target.value)}
+                    placeholder={tGround > 0 ? tGround.toFixed(1) : '0.0'}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Checkboxes — on a repeat attempt, hide the Lib/OOP boxes and offer
                 a "Repeat again" affordance instead so the instructor can chain
                 additional repeats without leaving the modal flow. */}
             <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-              {(isRepeatAttempt
-                ? [['completed', 'Completed ✓'], ['incomplete', 'Incomplete']]
-                : [
-                    // The four status boxes are mutually exclusive — clicking any
-                    // one auto-clears the others (see onChange below) so the
-                    // instructor can freely switch their mind between Completed /
-                    // Incomplete / Repeated (Lib) / Repeated (OOP).
-                    ['completed',   'Completed ✓', false],
-                    ['repeatedLib', 'Repeat (Lib)', lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
-                    ['repeatedOop', 'Repeat (OOP)', false],
-                    ['incomplete',  'Incomplete', false],
-                  ]
-              ).map(([k, label, disabled = false]) => (
+              {(() => {
+                // Stage checks / progress checks / final stage checks have a real
+                // distinction between "Incomplete" (didn't finish the lesson plan)
+                // and "Unsuccessful" (the evaluation criteria weren't met — bust).
+                const isCheckLesson = lesson.sc || lesson.fsc || lesson.pc
+                const failLabel = isCheckLesson ? 'Unsuccessful' : 'Incomplete'
+                // Repeat (Lib/OOP) only makes sense after the original has been
+                // attempted (some hours logged or marked done). Until then, the
+                // boxes are disabled with a tooltip explaining why — prevents the
+                // confusing "marked repeat → spawned an empty future row" path.
+                const hasAttemptLogged = !!(
+                  existing.completed || existing.dual || existing.solo ||
+                  existing.sim || existing.ground
+                )
+                const repeatNeedsPriorAttempt = !isRepeatAttempt && !hasAttemptLogged
+                if (isRepeatAttempt) {
+                  return [['completed', 'Completed ✓'], ['incomplete', failLabel]]
+                }
+                return [
+                  ['completed',   'Completed ✓', false],
+                  ['repeatedLib', 'Repeat (Lib)',
+                    repeatNeedsPriorAttempt || lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
+                  ['repeatedOop', 'Repeat (OOP)', repeatNeedsPriorAttempt],
+                  ['incomplete',  failLabel, false],
+                ]
+              })().map(([k, label, disabled = false]) => (
                 <label
                   key={k}
                   style={{
@@ -215,10 +268,14 @@ export default function LogFlightModal({ lesson, existing = {}, instructors, lib
                     fontSize: 13, opacity: disabled ? 0.45 : 1,
                   }}
                   title={
-                    disabled && k === 'repeatedLib'
-                      ? (lesson.sc || lesson.fsc || lesson.pc)
-                        ? 'Stage check / progress check repeats must be Out of Pocket'
-                        : 'Liberty funds only one repeat per course — this must be OOP'
+                    disabled && (k === 'repeatedLib' || k === 'repeatedOop')
+                      ? (!existing.completed && !existing.dual && !existing.solo && !existing.sim && !existing.ground)
+                        ? 'Log this attempt first — Repeat is only available after an attempt has been recorded'
+                        : k === 'repeatedLib'
+                          ? (lesson.sc || lesson.fsc || lesson.pc)
+                            ? 'Stage check / progress check repeats must be Out of Pocket'
+                            : 'Liberty funds only one repeat per course — this must be OOP'
+                          : undefined
                       : undefined
                   }
                 >
