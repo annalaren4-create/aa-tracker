@@ -8,7 +8,7 @@ import ManageInstructorsModal from './modals/ManageInstructorsModal'
 export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent,
-  onAddInstructor, onDeleteInstructor, calcProgress,
+  onAddInstructor, onDeleteInstructor, onUpdateInstructor, calcProgress,
   account, onSignOut,
 }) {
   const [showAdd, setShowAdd] = useState(false)
@@ -16,12 +16,18 @@ export default function InstructorDash({
 
   const locationStudents = students.filter((s) => s.base === activeLocation)
 
+  // Split into "mine" (this instructor is primary or secondary) vs. others
+  const myName = account?.name
+  const isMine = (s) => myName && (s.primaryInstructor === myName || s.secondaryInstructor === myName)
+  const myStudents = myName ? locationStudents.filter(isMine) : []
+  const otherStudents = myName ? locationStudents.filter((s) => !isMine(s)) : locationStudents
+
   return (
     <div>
       {/* Header */}
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="logo-badge">Aviation Adventures</span>
+          <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
           <div>
             <h1>Instructor Dashboard</h1>
             {account && <small style={{ opacity: .8 }}>{account.name} · {account.roleLabel}</small>}
@@ -70,16 +76,52 @@ export default function InstructorDash({
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {locationStudents.map((student) => (
-              <StudentCard
-                key={student.id}
-                student={student}
-                progress={calcProgress(student)}
-                onView={() => onSelectStudent(student)}
-                onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
-              />
-            ))}
+          <div style={{ display: 'grid', gap: 16 }}>
+            {/* My students */}
+            {myStudents.length > 0 && (
+              <section>
+                <SectionHeader
+                  label={`My Students (${myStudents.length})`}
+                  hint="Primary or secondary instructor"
+                  accent
+                />
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {myStudents.map((student) => (
+                    <StudentCard
+                      key={student.id}
+                      student={student}
+                      progress={calcProgress(student)}
+                      isMine
+                      myName={myName}
+                      onView={() => onSelectStudent(student)}
+                      onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Other students at this location */}
+            {otherStudents.length > 0 && (
+              <section>
+                {myStudents.length > 0 && (
+                  <SectionHeader
+                    label={`Other Students at ${activeLocation} (${otherStudents.length})`}
+                  />
+                )}
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {otherStudents.map((student) => (
+                    <StudentCard
+                      key={student.id}
+                      student={student}
+                      progress={calcProgress(student)}
+                      onView={() => onSelectStudent(student)}
+                      onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>
@@ -97,23 +139,45 @@ export default function InstructorDash({
           instructors={instructors}
           onAdd={onAddInstructor}
           onDelete={onDeleteInstructor}
+          onUpdate={onUpdateInstructor}
           onClose={() => setShowManageInstr(false)}
           activeLocation={activeLocation}
+          myName={account?.name}
         />
       )}
     </div>
   )
 }
 
-function StudentCard({ student, progress: p, onView, onDelete }) {
+function SectionHeader({ label, hint, accent }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${accent ? 'var(--aa-red)' : '#e5e7eb'}` }}>
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: accent ? 'var(--aa-red)' : '#374151', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}
+      </h3>
+      {hint && <span style={{ fontSize: 11, color: '#9ca3af' }}>{hint}</span>}
+    </div>
+  )
+}
+
+function StudentCard({ student, progress: p, isMine, myName, onView, onDelete }) {
   const bp = budgetPct(p)
   const schoolShort = student.school === 'Liberty University' ? 'Liberty'
-    : student.school === 'Purdue Global' ? 'Purdue' : 'Cal Aero'
+    : student.school === 'Purdue Global' ? 'Purdue'
+    : student.school === 'California Aeronautics University' ? 'Cal Aero'
+    : 'Independent'
   const schoolTag = student.school === 'Liberty University' ? 'tag-blue'
-    : student.school === 'Purdue Global' ? 'tag-amber' : 'tag-green'
+    : student.school === 'Purdue Global' ? 'tag-amber'
+    : student.school === 'California Aeronautics University' ? 'tag-green'
+    : 'tag-gray'
+
+  // Indicate whether this instructor is primary or secondary
+  const myRole = isMine && myName
+    ? (student.primaryInstructor === myName ? 'Primary' : 'Secondary')
+    : null
 
   return (
-    <div className="card" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
+    <div className="card" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start', borderLeft: isMine ? '3px solid var(--aa-red)' : undefined }}>
       <div style={{ cursor: 'pointer' }} onClick={onView}>
         {/* Name row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -150,6 +214,11 @@ function StudentCard({ student, progress: p, onView, onDelete }) {
             </span>
           )}
           <span className={`tag ${schoolTag}`}>{schoolShort}</span>
+          {myRole && (
+            <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)' }}>
+              {myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+            </span>
+          )}
         </div>
       </div>
 

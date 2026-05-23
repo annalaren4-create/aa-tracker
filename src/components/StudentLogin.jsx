@@ -13,7 +13,7 @@ export default function StudentLogin({ students, calcProgress, onLogin, onBack }
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className="btn btn-sm btn-ghost" onClick={onBack}>← Back</button>
-          <span className="logo-badge">Aviation Adventures</span>
+          <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
           <h1>Student Portal</h1>
         </div>
         <small>KHEF · KRMN · KHWY · KOKV · KJYO</small>

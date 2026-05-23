@@ -1,3 +1,16 @@
+/* ── Brand palette ───────────────────────────────────────────────
+   Aviation Adventures: red "A"s, navy text. Red is the action accent;
+   navy stays the structural color (headers, dark surfaces).
+*/
+:root {
+  --aa-red:        #c8102e;
+  --aa-red-dark:   #9d0c24;
+  --aa-red-soft:   #fef2f2;
+  --aa-navy:       #1a3a5c;
+  --aa-navy-dark:  #122a44;
+  --aa-navy-light: #2d5a8e;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -9,7 +22,7 @@ body {
 
 /* ── Header ─────────────────────────────────────────────────────── */
 .header {
-  background: #1a3a5c;
+  background: var(--aa-navy);
   color: #fff;
   padding: 12px 20px;
   display: flex;
@@ -18,16 +31,17 @@ body {
   position: sticky;
   top: 0;
   z-index: 50;
+  border-top: 3px solid var(--aa-red);  /* red brand stripe */
 }
 .header h1 { font-size: 17px; font-weight: 500; }
 .header small { font-size: 12px; opacity: .7; }
 .logo-badge {
-  background: #2d6ab4;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-block;
+  height: 32px;
+  width: auto;
   margin-right: 10px;
+  vertical-align: middle;
+  border-radius: 4px;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────── */
@@ -43,13 +57,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background .15s;
+  transition: background .15s, border-color .15s;
 }
 .btn:hover { background: #f3f4f6; }
-.btn-primary { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
-.btn-primary:hover { background: #2d5a8e; }
+.btn-primary { background: var(--aa-red); color: #fff; border-color: var(--aa-red); }
+.btn-primary:hover { background: var(--aa-red-dark); border-color: var(--aa-red-dark); }
+.btn-secondary { background: var(--aa-navy); color: #fff; border-color: var(--aa-navy); }
+.btn-secondary:hover { background: var(--aa-navy-light); border-color: var(--aa-navy-light); }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-danger { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+.btn-danger { background: var(--aa-red-soft); color: var(--aa-red); border-color: #fca5a5; }
 .btn-ghost { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.3); }
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
@@ -64,7 +80,7 @@ body {
   border-bottom: 2px solid transparent;
   white-space: nowrap;
 }
-.tab.active { color: #1a3a5c; border-bottom-color: #1a3a5c; }
+.tab.active { color: var(--aa-red); border-bottom-color: var(--aa-red); }
 
 /* ── Cards ───────────────────────────────────────────────────────── */
 .card {
@@ -105,7 +121,8 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #1a3a5c;
+  border-color: var(--aa-red);
+  box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.08);
 }
 label {
   font-size: 12px;
@@ -215,7 +232,7 @@ label {
   transition: border-color .15s, transform .15s;
   text-align: center;
 }
-.home-card:hover { border-color: #1a3a5c; transform: translateY(-2px); }
+.home-card:hover { border-color: var(--aa-red); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(200, 16, 46, 0.08); }
 .home-card .icon { font-size: 40px; margin-bottom: 12px; display: block; }
 
 /* ── Misc ────────────────────────────────────────────────────────── */
@@ -246,4 +263,76 @@ label {
   font-size: 12px;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
+}
+
+/* Training Review banner + form */
+.tr-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.tr-title { margin-bottom: 16px; border-bottom: 2px solid #1a3a5c; padding-bottom: 10px; }
+.tr-field { margin-bottom: 12px; }
+.tr-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.tr-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-family: inherit;
+}
+.tr-signatures {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+  margin-top: 32px; padding-top: 16px;
+}
+.sig-line { border-bottom: 1px solid #111827; height: 28px; }
+.sig-label { font-size: 11px; color: #374151; margin-top: 4px; }
+
+/* Print styles — for printing a student's progress sheet */
+.print-only { display: none; }
+@media print {
+  @page { size: letter landscape; margin: 0.4in; }
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .print-only { display: block; }
+  .print-header {
+    padding: 0 0 8px 0;
+    border-bottom: 2px solid #1a3a5c;
+    margin-bottom: 12px;
+  }
+  .print-container { padding: 0 !important; max-width: none !important; }
+  .card { box-shadow: none !important; border: 1px solid #d1d5db; }
+  .stat-card { box-shadow: none !important; border: 1px solid #d1d5db; break-inside: avoid; }
+  .grid2, .grid4 { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; }
+  /* Keep the syllabus from breaking awkwardly across pages */
+  .card > div { break-inside: avoid; }
+
+  /* When the Training Review modal is open, print ONLY its contents */
+  body:has(.tr-modal) > * { visibility: hidden; }
+  body:has(.tr-modal) .overlay,
+  body:has(.tr-modal) .overlay * { visibility: visible; }
+  body:has(.tr-modal) .overlay {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: #fff !important; padding: 0 !important;
+    display: block !important;
+  }
+  body:has(.tr-modal) .modal.tr-modal {
+    box-shadow: none !important; border: none !important;
+    max-width: none !important; width: 100% !important;
+    max-height: none !important;
+  }
+  body:has(.tr-modal) .tr-input {
+    border: none !important; border-bottom: 1px solid #111827 !important;
+    border-radius: 0 !important; padding: 2px 4px !important;
+    background: transparent !important;
+  }
 }

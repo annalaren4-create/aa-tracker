@@ -1,17 +1,28 @@
 import { useState } from 'react'
 import { COURSES } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
-import { budgetPct, budgetColor, overUnder } from '../utils/calculations'
+import { budgetPct, budgetColor, overUnder, repeatKeysFor } from '../utils/calculations'
 import LogFlightModal from './modals/LogFlightModal'
+import TrainingReviewModal from './modals/TrainingReviewModal'
 
-const COLS = '58px 1fr 52px 56px 56px 52px 56px 52px 52px 62px 88px 64px'
+// Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Date · Status
+const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 64px 56px 1fr 88px 64px'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, onLogFlight, onUpdateStudent, onBack, calcProgress,
+  student, logs, instructors, isInstructor, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
 }) {
   const [logLesson, setLogLesson] = useState(null)
+  const [showTR, setShowTR] = useState(false)
   const [editingDate, setEditingDate] = useState(null)
   const [editingAircraft, setEditingAircraft] = useState(false)
+  const [editingPrimary, setEditingPrimary] = useState(false)
+  const [editingSecondary, setEditingSecondary] = useState(false)
+
+  // Instructors at the same base as the student — used for the dropdowns
+  const baseInstructors = instructors
+    .filter((i) => !i.base || i.base === student.base)
+    .map((i) => i.name)
+    .sort()
 
   const course    = COURSES[student.course]
   const sLogs     = logs[student.id] || {}
@@ -21,11 +32,10 @@ export default function StudentDetail({
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
 
-  // Per-field totals for the totals row
+  // Per-field totals for the totals row (includes repeat-attempt logs).
   let totDual = 0, totSolo = 0, totXC = 0, totSim = 0
   let totHood = 0, totNight = 0, totGround = 0, totFlown = 0
-  course.lessons.forEach((l) => {
-    const lg = sLogs[l.id]
+  const addToTotals = (lg) => {
     if (!lg) return
     totDual   += lg.dual   || 0
     totSolo   += lg.solo   || 0
@@ -35,16 +45,51 @@ export default function StudentDetail({
     totNight  += lg.night  || 0
     totGround += lg.ground || 0
     totFlown  += (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
+  }
+  course.lessons.forEach((l) => {
+    addToTotals(sLogs[l.id])
+    repeatKeysFor(sLogs, l.id).forEach((rk) => addToTotals(sLogs[rk]))
   })
 
   const fmt = (v) => v > 0 ? `${v.toFixed(1)}` : '—'
 
+  // Aviation Adventures repeat policy:
+  //  • Liberty funds at most ONE repeated lesson per course
+  //  • Stage check repeats are always out of pocket (never Lib)
+  //  • Any other repeat is out of pocket → Training Review required
+  const lessonsWithLog = course.lessons.map((l) => ({ ...l, ...(sLogs[l.id] || {}) }))
+  const oopLessons = lessonsWithLog.filter((l) => l.repeatedOop)
+  const libRepeats = lessonsWithLog.filter((l) => l.repeatedLib)
+  const stageCheckLibViolations = libRepeats.filter((l) => l.sc || l.fsc || l.pc)
+  const extraLibViolations = libRepeats.length > 1 ? libRepeats.slice(1) : []
+  // Lessons with more than one repeat attempt — only the first repeat is Lib-funded,
+  // any additional repeats on the same lesson are automatically OOP.
+  const multiRepeatLessons = course.lessons.filter(
+    (l) => repeatKeysFor(sLogs, l.id).length > 1
+  )
+  // Row badge: the FIRST repeat row mirrors the parent's flag (Lib or OOP);
+  // every subsequent repeat is automatically OOP since Liberty only funds one
+  // repeat per lesson. The UI prevents marking Lib on stage/progress checks
+  // or on more than one lesson, so we trust the parent flag here.
+  const repeatBillingType = (lesson, repeatIndex) => {
+    const parent = sLogs[lesson.id] || {}
+    if (repeatIndex === 0) {
+      if (parent.repeatedOop) return 'OOP'
+      if (parent.repeatedLib) return 'Lib'
+      return 'repeat'
+    }
+    return 'OOP'
+  }
+  const policyViolations = [...stageCheckLibViolations, ...extraLibViolations]
+  const needsTR = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
+
   return (
     <div>
       {/* Header */}
-      <div className="header">
+      <div className="header no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className="btn btn-sm btn-ghost" onClick={onBack}>← Back</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => window.print()}>🖨 Print</button>
           <div>
             <h1>{student.name}</h1>
             <small>
@@ -76,14 +121,137 @@ export default function StudentDetail({
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.85)' }}>Primary: {student.primaryInstructor}</div>
-          {student.secondaryInstructor && (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.65)' }}>Secondary: {student.secondaryInstructor}</div>
-          )}
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.85)' }}>
+            Primary:{' '}
+            {isInstructor ? (
+              editingPrimary ? (
+                <select
+                  value={student.primaryInstructor}
+                  autoFocus
+                  onChange={(e) => { onUpdateStudent(student.id, { primaryInstructor: e.target.value }); setEditingPrimary(false) }}
+                  onBlur={() => setEditingPrimary(false)}
+                  style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
+                >
+                  {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
+                </select>
+              ) : (
+                <span
+                  onClick={() => setEditingPrimary(true)}
+                  style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
+                  title="Click to change primary instructor"
+                >
+                  {student.primaryInstructor} ✏
+                </span>
+              )
+            ) : student.primaryInstructor}
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.65)' }}>
+            Secondary:{' '}
+            {isInstructor ? (
+              editingSecondary ? (
+                <select
+                  value={student.secondaryInstructor || ''}
+                  autoFocus
+                  onChange={(e) => { onUpdateStudent(student.id, { secondaryInstructor: e.target.value }); setEditingSecondary(false) }}
+                  onBlur={() => setEditingSecondary(false)}
+                  style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff', width: 'auto', display: 'inline-block' }}
+                >
+                  <option value="">— none —</option>
+                  {baseInstructors.map((n) => (<option key={n} value={n}>{n}</option>))}
+                </select>
+              ) : (
+                <span
+                  onClick={() => setEditingSecondary(true)}
+                  style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
+                  title="Click to change secondary instructor"
+                >
+                  {student.secondaryInstructor || '— none —'} ✏
+                </span>
+              )
+            ) : (student.secondaryInstructor || '')}
+          </div>
         </div>
       </div>
 
-      <div style={{ padding: 16, maxWidth: 1280, margin: '0 auto' }}>
+      {/* Print-only header */}
+      <div className="print-only print-header">
+        <h1 style={{ margin: 0, fontSize: 18 }}>{student.name}</h1>
+        <div style={{ fontSize: 12, color: '#374151', marginTop: 4 }}>
+          {student.course} · {COURSES[student.course]?.avia} · {student.base} · {student.aircraft}
+        </div>
+        <div style={{ fontSize: 12, color: '#374151' }}>
+          Primary: {student.primaryInstructor}
+          {student.secondaryInstructor ? ` · Secondary: ${student.secondaryInstructor}` : ''}
+        </div>
+        <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>
+          Printed {new Date().toLocaleDateString()}
+        </div>
+      </div>
+
+      <div style={{ padding: 16, maxWidth: 1280, margin: '0 auto' }} className="print-container">
+        {/* Instructor contact card — visible to students AND instructors */}
+        {(() => {
+          const findInstr = (n) => n ? instructors.find((i) => i.name === n) : null
+          const primary = findInstr(student.primaryInstructor)
+          const secondary = findInstr(student.secondaryInstructor)
+          const shown = [primary, secondary].filter(Boolean)
+          if (shown.length === 0) return null
+          return (
+            <div style={{ marginBottom: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                Instructors
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: shown.length === 2 ? '1fr 1fr' : '1fr', gap: 16 }}>
+                {primary && <InstructorContact label="Primary" ins={primary} />}
+                {secondary && <InstructorContact label="Secondary" ins={secondary} />}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Training Review required banner */}
+        {needsTR && (
+          <div className="tr-banner no-print">
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#991b1b' }}>
+                ⚠ Training Review required
+              </div>
+              {oopLessons.length > 0 && (
+                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
+                  {oopLessons.length} out-of-pocket repeat{oopLessons.length === 1 ? '' : 's'} logged
+                  {' '}({oopLessons.map((l) => l.id).join(', ')}).
+                </div>
+              )}
+              {stageCheckLibViolations.length > 0 && (
+                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
+                  Stage check / progress check repeats must be out of pocket — fix:{' '}
+                  {stageCheckLibViolations.map((l) => l.id).join(', ')}
+                </div>
+              )}
+              {extraLibViolations.length > 0 && (
+                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
+                  Only 1 funded repeat allowed per course — these must be OOP:{' '}
+                  {extraLibViolations.map((l) => l.id).join(', ')}
+                </div>
+              )}
+              {multiRepeatLessons.length > 0 && (
+                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
+                  Only the first repeat per lesson is funded — additional repeats are OOP on:{' '}
+                  {multiRepeatLessons.map((l) => l.id).join(', ')}
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 4 }}>
+                A signed TR must be e-mailed to flightaffiliate@liberty.edu.
+              </div>
+            </div>
+            {isInstructor && (
+              <button className="btn btn-primary" onClick={() => setShowTR(true)}>
+                Generate Training Review
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Stats */}
         <div className={isInstructor ? 'grid4' : 'grid2'} style={{ marginBottom: 16 }}>
           <StatCard label="Progress" value={`${progress.pct}%`} valueColor="#1a3a5c">
@@ -105,6 +273,11 @@ export default function StudentDetail({
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
               </div>
+              {progress.oopCost > 0 && (
+                <div style={{ fontSize: 11, color: '#b45309', marginTop: 2, fontWeight: 600 }}>
+                  + ${progress.oopCost.toLocaleString()} out of pocket
+                </div>
+              )}
               {progress.projected != null && (
                 <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
                   proj. <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projected.toLocaleString()}</span> at target hrs
@@ -145,64 +318,125 @@ export default function StudentDetail({
             display: 'grid', gridTemplateColumns: COLS, gap: 4,
             padding: '7px 10px', fontSize: 11, color: '#6b7280', fontWeight: 500,
             borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
-            minWidth: 880,
+            minWidth: 920,
           }}>
             <span>Lesson</span>
-            <span>Objectives</span>
-            <span style={{ textAlign: 'right' }}>Flt Tgt</span>
             <span style={{ textAlign: 'right' }}>Dual</span>
             <span style={{ textAlign: 'right' }}>Solo</span>
             <span style={{ textAlign: 'right' }}>XC</span>
+            <span style={{ textAlign: 'right' }}>Instr</span>
             <span style={{ textAlign: 'right' }}>Sim</span>
-            <span style={{ textAlign: 'right' }}>Hood</span>
-            <span style={{ textAlign: 'right' }}>Night</span>
+            <span style={{ textAlign: 'right' }}>Tgt Tot</span>
+            <span style={{ textAlign: 'right' }}>Actual Flt</span>
+            <span style={{ textAlign: 'right' }}>Over/Under</span>
             <span style={{ textAlign: 'right' }}>Ground</span>
+            <span>Objectives</span>
             <span style={{ textAlign: 'center' }}>Date</span>
             <span style={{ textAlign: 'center' }}>Status</span>
           </div>
-          {/* Legend: ground column shows recommended hours in blue */}
-          <div style={{ padding: '3px 10px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 9, color: '#9ca3af', display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span>Ground column:</span>
-            <span style={{ fontWeight: 600, color: '#111827' }}>logged</span>
-            <span>/</span>
-            <span style={{ fontWeight: 600, color: '#2d6ab4' }}>rec. target</span>
-            <span>· turns green when met</span>
+          {/* Legend */}
+          <div style={{ padding: '3px 10px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 9, color: '#9ca3af', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span>Dual/Solo/XC/Instr/Sim columns = syllabus targets (read-only).</span>
+            <span>Actual Flt &amp; Ground are entered per attempt.</span>
+            <span>Over/Under = actual − target.</span>
           </div>
 
-          {course.lessons.map((lesson) => {
-            const lg = sLogs[lesson.id] || {}
+          {course.lessons.flatMap((lesson) => {
+            // Build an "expanded" list: the original lesson row, plus a row for every
+            // repeat-attempt key in storage. If the parent is flagged repeat but no
+            // repeat row exists yet, auto-add an empty `__r1` placeholder. Also append
+            // an "+ Add another repeat" affordance whenever the parent is flagged or
+            // any repeats exist, so the instructor can log unlimited repeats.
+            const items = [{ key: lesson.id, isRepeat: false }]
+            const repeatKeys = repeatKeysFor(sLogs, lesson.id)
+            repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
+            const origLg = sLogs[lesson.id] || {}
+            const parentFlagged = origLg.repeatedLib || origLg.repeatedOop
+            // If parent is flagged but no repeat rows exist yet, show a placeholder
+            // for __r1. Additional repeats are created via the "Repeat again" button
+            // inside the repeat log modal.
+            if (parentFlagged && repeatKeys.length === 0) {
+              items.push({ key: `${lesson.id}__r1`, isRepeat: true, pending: true })
+            }
+            return items
+          }).map(({ key, isRepeat, pending }) => {
+            // Resolve the underlying lesson definition (strip the __rN suffix if present)
+            const baseId = key.split('__r')[0]
+            const lesson = course.lessons.find((l) => l.id === baseId)
+            const lg = sLogs[key] || {}
             const status = lg.completed ? 'done' : Object.keys(lg).length > 0 ? 'partial' : 'pending'
+            const origLg = sLogs[baseId] || {}
+            // 0-based index of this repeat (1st repeat = 0, 2nd = 1, ...). We
+            // derive it directly from the __rN suffix to avoid any dependency on
+            // how the storage keys happen to sort.
+            const repeatNum = isRepeat ? (parseInt(key.split('__r')[1], 10) || 1) : 0
+            const repeatIdx = isRepeat ? repeatNum - 1 : 0
+            const repeatBadge = isRepeat ? repeatBillingType(lesson, repeatIdx) : null
 
             return (
               <div
-                key={lesson.id}
+                key={key}
                 style={{
                   display: 'grid', gridTemplateColumns: COLS, gap: 4,
                   alignItems: 'center', padding: '6px 10px',
                   borderBottom: '1px solid #f3f4f6', fontSize: 12, cursor: 'pointer',
-                  background: lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
-                  minWidth: 880,
+                  background: isRepeat
+                    ? 'rgba(220,38,38,.04)'
+                    : lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
+                  borderLeft: isRepeat ? '3px solid #dc2626' : undefined,
+                  minWidth: 920,
                 }}
-                onClick={() => isInstructor && setLogLesson(lesson)}
+                onClick={() => isInstructor && setLogLesson({ lesson, key })}
               >
                 <div>
-                  <span style={{ fontWeight: 500 }}>{lesson.id}</span>
-                  {(lesson.sc || lesson.pc) && (
+                  <span style={{ fontWeight: 500 }}>
+                    {isRepeat ? <span style={{ color: '#dc2626' }}>↻ {lesson.id}</span> : lesson.id}
+                  </span>
+                  {isRepeat && repeatBadge && (
+                    <div className={`tag ${repeatBadge === 'Lib' ? 'tag-blue' : 'tag-amber'}`} style={{ marginTop: 2, fontSize: 10 }}>
+                      repeat ({repeatBadge}){pending ? ' — log' : ''}
+                    </div>
+                  )}
+                  {!isRepeat && (lesson.sc || lesson.pc) && (
                     <div className={`tag ${lesson.sc ? 'tag-blue' : 'tag-amber'}`} style={{ marginTop: 2, fontSize: 10 }}>
                       {lesson.sc ? 'stage' : 'prog'}
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{lesson.o}</span>
-                <span style={{ textAlign: 'right', fontWeight: 500 }}>{lesson.t > 0 ? parseFloat(lesson.t).toFixed(1) : '—'}</span>
 
-                <span style={{ textAlign: 'right' }}>{fmt(lg.dual   || 0)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(lg.solo   || 0)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(lg.xc     || 0)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(lg.sim    || 0)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(lg.hood   || 0)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(lg.night  || 0)}</span>
+                {/* Syllabus targets — read-only single numbers per lesson */}
+                <TargetCell value={lesson.d  || lesson.sm} />
+                <TargetCell value={lesson.s} />
+                <TargetCell value={lesson.x} />
+                <TargetCell value={lesson.i} />
+                <TargetCell value={lesson.sm} />
+                <TargetCell value={lesson.t} bold />
+
+                {/* Actual flight time logged this attempt */}
+                {(() => {
+                  const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
+                  const target    = lesson.t || 0
+                  const diff      = actualFlt - target
+                  const showDiff  = actualFlt > 0 && target > 0
+                  return (
+                    <>
+                      <div style={{ textAlign: 'right', fontWeight: 500 }}>
+                        {actualFlt > 0 ? actualFlt.toFixed(1) : '—'}
+                      </div>
+                      <div style={{
+                        textAlign: 'right', fontSize: 11, fontWeight: 600,
+                        color: !showDiff ? '#d1d5db' : diff > 0 ? '#b45309' : diff < 0 ? '#15803d' : '#6b7280',
+                      }}>
+                        {showDiff ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}` : '—'}
+                      </div>
+                    </>
+                  )
+                })()}
+
+                {/* Ground time logged this attempt — keeps the logged/target overlay */}
                 <LogCell logged={lg.ground} rec={lesson.g} />
+
+                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{lesson.o}</span>
 
                 {/* Date cell — inline editable for instructors */}
                 <span
@@ -210,18 +444,18 @@ export default function StudentDetail({
                   onClick={(e) => {
                     if (isInstructor && Object.keys(lg).length > 0) {
                       e.stopPropagation()
-                      setEditingDate(lesson.id)
+                      setEditingDate(key)
                     }
                   }}
                 >
-                  {editingDate === lesson.id ? (
+                  {editingDate === key ? (
                     <input
                       type="date"
                       defaultValue={lg.date || new Date().toISOString().slice(0, 10)}
                       autoFocus
                       style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #1a3a5c', borderRadius: 4, width: '100%' }}
                       onClick={(e) => e.stopPropagation()}
-                      onBlur={(e) => { onLogFlight(student.id, lesson.id, { ...lg, date: e.target.value }); setEditingDate(null) }}
+                      onBlur={(e) => { onLogFlight(student.id, key, { ...lg, date: e.target.value }); setEditingDate(null) }}
                     />
                   ) : (
                     <span>
@@ -243,36 +477,180 @@ export default function StudentDetail({
           })}
 
           {/* Totals row */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: COLS, gap: 4,
-            padding: '8px 10px', background: '#f8fafc',
-            fontSize: 12, fontWeight: 600, borderTop: '2px solid #e5e7eb',
-            minWidth: 880,
-          }}>
-            <span>Totals</span>
-            <span />
-            <span style={{ textAlign: 'right' }}>{parseFloat(course.targetTotal).toFixed(1)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totDual)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totSolo)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totXC)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totSim)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totHood)}</span>
-            <span style={{ textAlign: 'right' }}>{fmt(totNight)}</span>
-            <TotalCell logged={totGround} rec={course.lessons.reduce((s,l)=>s+(l.g||0),0)} />
-            <span />
-            <span style={{ textAlign: 'center' }}>{progress.completed}/{progress.total}</span>
-          </div>
+          {(() => {
+            const targetDual = course.lessons.reduce((s,l) => s + (l.d  || l.sm || 0), 0)
+            const targetSolo = course.lessons.reduce((s,l) => s + (l.s  || 0), 0)
+            const targetXC   = course.lessons.reduce((s,l) => s + (l.x  || 0), 0)
+            const targetInst = course.lessons.reduce((s,l) => s + (l.i  || 0), 0)
+            const targetSim  = course.lessons.reduce((s,l) => s + (l.sm || 0), 0)
+            const targetGnd  = course.lessons.reduce((s,l) => s + (l.g  || 0), 0)
+            // Over/Under total = sum of each row's per-attempt over/under
+            // (only rows that actually have flight logged + a target).
+            let overUnderTot = 0
+            let anyDiff = false
+            const addDiff = (lesson, lg) => {
+              const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
+              const target    = lesson.t || 0
+              if (actualFlt > 0 && target > 0) {
+                overUnderTot += (actualFlt - target)
+                anyDiff = true
+              }
+            }
+            course.lessons.forEach((lesson) => {
+              addDiff(lesson, sLogs[lesson.id] || {})
+              repeatKeysFor(sLogs, lesson.id).forEach((rk) => addDiff(lesson, sLogs[rk] || {}))
+            })
+            return (
+              <div style={{
+                display: 'grid', gridTemplateColumns: COLS, gap: 4,
+                padding: '8px 10px', background: '#f8fafc',
+                fontSize: 12, fontWeight: 600, borderTop: '2px solid #e5e7eb',
+                minWidth: 920,
+              }}>
+                <span>Totals</span>
+                <span style={{ textAlign: 'right' }}>{fmt(targetDual)}</span>
+                <span style={{ textAlign: 'right' }}>{fmt(targetSolo)}</span>
+                <span style={{ textAlign: 'right' }}>{fmt(targetXC)}</span>
+                <span style={{ textAlign: 'right' }}>{fmt(targetInst)}</span>
+                <span style={{ textAlign: 'right' }}>{fmt(targetSim)}</span>
+                <span style={{ textAlign: 'right' }}>{parseFloat(course.targetTotal).toFixed(1)}</span>
+                <span style={{ textAlign: 'right' }}>{fmt(totFlown)}</span>
+                <span style={{
+                  textAlign: 'right',
+                  color: overUnderTot > 0 ? '#b45309' : overUnderTot < 0 ? '#15803d' : '#6b7280',
+                }}>
+                  {anyDiff ? `${overUnderTot > 0 ? '+' : ''}${overUnderTot.toFixed(1)}` : '—'}
+                </span>
+                <TotalCell logged={totGround} rec={targetGnd} />
+                <span />
+                <span />
+                <span style={{ textAlign: 'center' }}>{progress.completed}/{progress.total}</span>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
+      {showTR && (
+        <TrainingReviewModal
+          student={student}
+          logs={sLogs}
+          oopLessons={oopLessons}
+          policyViolations={policyViolations}
+          onClose={() => setShowTR(false)}
+        />
+      )}
+
       {logLesson && (
         <LogFlightModal
-          lesson={logLesson}
-          existing={sLogs[logLesson.id] || {}}
+          key={logLesson.key}  // force fresh state (e.g. Repeat again checkbox) on every repeat transition
+          lesson={logLesson.lesson}
+          existing={sLogs[logLesson.key] || {}}
           instructors={instructors}
-          onSave={(data) => { onLogFlight(student.id, logLesson.id, data); setLogLesson(null) }}
+          libRepeatUsedElsewhere={libRepeats.some((l) => l.id !== logLesson.lesson.id)}
+          isRepeatAttempt={logLesson.key.includes('__r')}
+          isLastRepeat={(() => {
+            if (!logLesson.key.includes('__r')) return false
+            const parentId = logLesson.key.split('__r')[0]
+            const currentNum = parseInt(logLesson.key.split('__r')[1], 10) || 0
+            // True only when no later repeat (__r(N+1), __r(N+2), ...) exists yet.
+            const laterExists = repeatKeysFor(sLogs, parentId).some(
+              (k) => (parseInt(k.split('__r')[1], 10) || 0) > currentNum
+            )
+            return !laterExists
+          })()}
+          onSave={(data) => {
+            const { _repeatAgain, ...lessonData } = data
+            const prevLg = sLogs[logLesson.key] || {}
+            onLogFlight(student.id, logLesson.key, lessonData)
+
+            // If this was a repeat attempt marked Completed ✓, also mark the
+            // original (parent) lesson AND every earlier repeat attempt complete.
+            // (Completing a later attempt implies all prior attempts are done too.)
+            if (logLesson.key.includes('__r') && lessonData.completed) {
+              const parentId = logLesson.key.split('__r')[0]
+              const currentNum = parseInt(logLesson.key.split('__r')[1], 10) || 0
+
+              // Parent (original) lesson
+              const parentLg = sLogs[parentId] || {}
+              if (!parentLg.completed) {
+                onLogFlight(student.id, parentId, { ...parentLg, completed: true })
+              }
+
+              // Each earlier repeat attempt (__r1 ... __r(N-1))
+              repeatKeysFor(sLogs, parentId).forEach((rk) => {
+                const num = parseInt(rk.split('__r')[1], 10) || 0
+                if (num < currentNum) {
+                  const rlg = sLogs[rk] || {}
+                  if (!rlg.completed) {
+                    onLogFlight(student.id, rk, { ...rlg, completed: true })
+                  }
+                }
+              })
+            }
+
+            // Case A: just flagged the ORIGINAL as a repeat → jump straight to
+            // the first repeat slot so the instructor can log it immediately.
+            const isOriginal = !logLesson.key.includes('__r')
+            const justFlaggedRepeat = isOriginal &&
+              (lessonData.repeatedLib || lessonData.repeatedOop) &&
+              !(prevLg.repeatedLib || prevLg.repeatedOop)
+            if (justFlaggedRepeat) {
+              const parentId = logLesson.lesson.id
+              const existing = repeatKeysFor(sLogs, parentId)
+              const nums = existing.map((k) => parseInt(k.split('__r')[1], 10) || 0)
+              const nextNum = (nums.length ? Math.max(...nums) : 0) + 1
+              setLogLesson({ lesson: logLesson.lesson, key: `${parentId}__r${nextNum}` })
+              return
+            }
+
+            // Case B: user checked "Repeat again" on a repeat-attempt modal. Save
+            // the current attempt (already done above) AND seed an empty next-repeat
+            // entry so a new row appears on the tracking sheet, ready to be clicked
+            // and logged. Then close the modal — no auto-opening another one.
+            if (_repeatAgain && logLesson.key.includes('__r')) {
+              const parentId = logLesson.key.split('__r')[0]
+              const existing = repeatKeysFor(sLogs, parentId)
+              const nums = existing.map((k) => parseInt(k.split('__r')[1], 10) || 0)
+              const currentNum = parseInt(logLesson.key.split('__r')[1], 10) || 0
+              const nextNum = Math.max(currentNum, ...(nums.length ? nums : [0])) + 1
+              onLogFlight(student.id, `${parentId}__r${nextNum}`, {})
+            }
+
+            setLogLesson(null)
+          }}
+          onClear={() => { onClearLesson(student.id, logLesson.key); setLogLesson(null) }}
           onClose={() => setLogLesson(null)}
         />
+      )}
+    </div>
+  )
+}
+
+function InstructorContact({ label, ins }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 2 }}>{ins.name}</div>
+      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+        {ins.cert}
+        {ins.lineRate === 110 && <span style={{ marginLeft: 6, color: '#dc2626' }}>· Chief</span>}
+      </div>
+      {(ins.phone || ins.email) ? (
+        <div style={{ fontSize: 12, color: '#374151', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {ins.phone && (
+            <a href={`tel:${ins.phone.replace(/[^\d+]/g, '')}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
+              📞 {ins.phone}
+            </a>
+          )}
+          {ins.email && (
+            <a href={`mailto:${ins.email}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
+              ✉ {ins.email}
+            </a>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, fontStyle: 'italic' }}>No contact info on file</div>
       )}
     </div>
   )
@@ -289,20 +667,40 @@ function StatCard({ label, value, valueColor, valueSize = 20, children }) {
 }
 
 /**
+ * Single read-only target value (used for Dual / Solo / XC / Instr / Sim columns,
+ * which mirror the syllabus and are not edited per attempt).
+ */
+function TargetCell({ value, bold = false }) {
+  const has = (value || 0) > 0
+  return (
+    <div style={{
+      textAlign: 'right', fontSize: 12,
+      color: has ? '#111827' : '#d1d5db',
+      fontWeight: bold ? 600 : 400,
+    }}>
+      {has ? value.toFixed(1) : '—'}
+    </div>
+  )
+}
+
+/**
  * Ground column cell — shows logged hours with the recommended target below in blue.
  * Turns green once logged meets or exceeds the recommendation.
  */
 function LogCell({ logged, rec }) {
   const val = logged || 0
   const hasRec = rec > 0
-  const met = hasRec && val >= rec
+  const over = hasRec && val > rec        // strictly exceeded the target
+  const met  = hasRec && val >= rec && !over
+  // Color priority: red if over, green if met exactly, dark gray if logged but no rec, light gray if empty.
+  const valColor = val === 0 ? '#d1d5db' : (over ? '#dc2626' : '#111827')
   return (
     <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
-      <div style={{ fontSize: 12, color: val > 0 ? '#111827' : '#d1d5db' }}>
+      <div style={{ fontSize: 12, color: valColor, fontWeight: over ? 600 : 400 }}>
         {val > 0 ? val.toFixed(1) : '—'}
       </div>
       {hasRec && (
-        <div style={{ fontSize: 9, fontWeight: 600, color: met ? '#16a34a' : '#2d6ab4' }}>
+        <div style={{ fontSize: 9, fontWeight: 600, color: over ? '#dc2626' : met ? '#16a34a' : '#2d6ab4' }}>
           {rec.toFixed(1)}
         </div>
       )}

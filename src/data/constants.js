@@ -4,6 +4,7 @@ export const SCHOOLS = [
   'Liberty University',
   'Purdue Global',
   'California Aeronautics University',
+  'Aviation Adventures (independent)',
 ]
 
 export const AIRCRAFT_LIST = [
@@ -58,5 +59,5 @@ export const instrRate = (base, isCheck = false) => {
 }
 
 export const INSTRUCTOR_CERTS = [
-  'CFI', 'CFII', 'MEI', 'CFI/CFII', 'CFI/CFII/MEI', 'ATP', 'Other',
+  'CFI', 'CFI/CFII', 'CFI/CFII/MEI',
 ]

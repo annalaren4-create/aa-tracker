@@ -27,8 +27,8 @@ function getBudgetPace(p) {
 
 export default function ChiefDash({
   account, students, instructors, activeLocation, setActiveLocation,
-  setView, onSelectStudent, onAddStudent, onDeleteStudent,
-  onAddInstructor, onDeleteInstructor, calcProgress, onSignOut,
+  setView, onSelectStudent, onAddStudent, onDeleteStudent, onDeleteStudentAccount,
+  onAddInstructor, onDeleteInstructor, onUpdateInstructor, calcProgress, onSignOut,
 }) {
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
@@ -71,7 +71,18 @@ export default function ChiefDash({
     .filter((s) => courseFilter === 'All' || s.course === courseFilter)
     .filter((s) => !search.trim() || s.name.toLowerCase().includes(search.toLowerCase()))
 
+  // If the logged-in chief is also an instructor, float their own primary students
+  // to the top of the list, then their secondaries, then everyone else.
+  const myName = account?.name
+  const myRank = (s) => {
+    if (!myName) return 2
+    if (s.primaryInstructor === myName) return 0
+    if (s.secondaryInstructor === myName) return 1
+    return 2
+  }
   const visibleStudents = [...filtered].sort((a, b) => {
+    const rankDiff = myRank(a) - myRank(b)
+    if (rankDiff !== 0) return rankDiff  // my students always first, regardless of sortCol
     const pa = calcProgress(a)
     const pb = calcProgress(b)
     const paceA = getBudgetPace(pa)
@@ -88,10 +99,15 @@ export default function ChiefDash({
     return (va - vb) * sortDir
   })
 
-  const SortBtn = ({ col, children }) => (
+  const SortBtn = ({ col, children, align = 'flex-start' }) => (
     <span
       onClick={() => toggleSort(col)}
-      style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
+      style={{
+        cursor: 'pointer', userSelect: 'none',
+        display: 'flex', alignItems: 'center', gap: 2,
+        justifyContent: align,
+        width: '100%',  // fill the grid cell so justifyContent actually aligns
+      }}
     >
       {children}
       <span style={{ fontSize: 8, opacity: sortCol === col ? 1 : 0.3 }}>
@@ -106,7 +122,7 @@ export default function ChiefDash({
       {/* ── Header ───────────────────────────────────────────────── */}
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="logo-badge">Aviation Adventures</span>
+          <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
           <div>
             <h1>Chief Dashboard</h1>
             <small style={{ opacity: .8 }}>{account?.name} · {account?.roleLabel}</small>
@@ -141,22 +157,15 @@ export default function ChiefDash({
           </div>
 
           {/* Budget Pace Bar Chart */}
-          <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 280 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 320 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
               Budget Pace · {withStatus.length} students tracked
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 70 }}>
-
-              <ChartBar label="Under Budget" count={underCount} max={maxBarCount} color="#16a34a" textColor="#15803d" />
-              <ChartBar label="On Track"     count={onTrackCount} max={maxBarCount} color="#d97706" textColor="#92400e" />
-              <ChartBar label="Over Budget"  count={overCount}    max={maxBarCount} color="#dc2626" textColor="#dc2626" />
-              <ChartBar label="No Data"      count={noDataCount}  max={maxBarCount} color="#d1d5db" textColor="#9ca3af" />
-
-              {/* Y-axis hint */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 56, marginLeft: 4, paddingBottom: 16 }}>
-                <span style={{ fontSize: 8, color: '#d1d5db' }}>{maxBarCount}</span>
-                <span style={{ fontSize: 8, color: '#d1d5db' }}>0</span>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, paddingTop: 16 }}>
+              <ChartBar label="Under Budget" count={underCount}   max={maxBarCount} color="#16a34a" />
+              <ChartBar label="On Track"     count={onTrackCount} max={maxBarCount} color="#d97706" />
+              <ChartBar label="Over Budget"  count={overCount}    max={maxBarCount} color="#dc2626" />
+              <ChartBar label="No Data"      count={noDataCount}  max={maxBarCount} color="#9ca3af" />
             </div>
           </div>
 
@@ -220,7 +229,7 @@ export default function ChiefDash({
             {/* Column headers */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 44px',
+              gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 110px',
               gap: 8,
               padding: '6px 12px',
               background: '#f8fafc',
@@ -233,11 +242,11 @@ export default function ChiefDash({
             }}>
               <div />
               <SortBtn col="name">Student</SortBtn>
-              <SortBtn col="course">Course</SortBtn>
-              <SortBtn col="base">Base</SortBtn>
-              <SortBtn col="pct">Progress</SortBtn>
-              <SortBtn col="pace">Budget Pace</SortBtn>
-              <SortBtn col="remaining">Remaining</SortBtn>
+              <SortBtn col="course" align="center">Course</SortBtn>
+              <SortBtn col="base" align="center">Base</SortBtn>
+              <SortBtn col="pct" align="center">Progress</SortBtn>
+              <SortBtn col="pace" align="center">Budget Pace</SortBtn>
+              <SortBtn col="remaining" align="flex-end">Remaining</SortBtn>
               <div />
             </div>
 
@@ -252,8 +261,18 @@ export default function ChiefDash({
                   progress={p}
                   pace={pace}
                   striped={i % 2 === 1}
+                  myName={myName}
                   onView={() => onSelectStudent(student)}
-                  onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
+                  onDelete={() => {
+                    if (confirm(`Remove ${student.name} from the dashboard?\n\nTheir login account will be kept — they can sign back in or be re-added later.`)) {
+                      onDeleteStudent(student.id)
+                    }
+                  }}
+                  onDeleteAccount={() => {
+                    if (confirm(`Permanently delete ${student.name}'s account?\n\nThis removes both the student record and the login account. This cannot be undone.`)) {
+                      onDeleteStudentAccount(student.id)
+                    }
+                  }}
                 />
               )
             })}
@@ -275,8 +294,10 @@ export default function ChiefDash({
           instructors={instructors}
           onAdd={onAddInstructor}
           onDelete={onDeleteInstructor}
+          onUpdate={onUpdateInstructor}
           onClose={() => setShowManageInstr(false)}
           activeLocation={activeLocation}
+          myName={account?.name}
         />
       )}
     </div>
@@ -285,17 +306,33 @@ export default function ChiefDash({
 
 /* ── Sub-components ─────────────────────────────────────────────── */
 
-function ChartBar({ label, count, max, color, textColor }) {
-  const BAR_MAX = 52
-  const h = max > 0 ? Math.max((count / max) * BAR_MAX, count > 0 ? 6 : 1) : 1
+function ChartBar({ label, count, max, color }) {
+  const BAR_MAX = 64
+  const isEmpty = count === 0
+  const h = max > 0 && count > 0 ? Math.max((count / max) * BAR_MAX, 8) : 2
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 58 }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: count > 0 ? textColor : '#d1d5db' }}>{count}</span>
-      <div style={{ display: 'flex', alignItems: 'flex-end', height: BAR_MAX }}>
-        <div style={{ width: 38, height: h, background: count > 0 ? color : '#e5e7eb', borderRadius: '4px 4px 0 0' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 64 }}>
+      {/* Bar with count label above it */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: BAR_MAX + 18, justifyContent: 'flex-end' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: isEmpty ? '#d1d5db' : color, marginBottom: 4, lineHeight: 1 }}>
+          {count}
+        </span>
+        <div
+          style={{
+            width: 36,
+            height: h,
+            background: isEmpty ? '#e5e7eb' : color,
+            borderRadius: '4px 4px 0 0',
+            transition: 'height 200ms',
+          }}
+        />
       </div>
-      <div style={{ width: '100%', height: 2, background: '#e5e7eb', borderRadius: 1 }} />
-      <div style={{ fontSize: 9, color: '#9ca3af', textAlign: 'center', lineHeight: 1.3, maxWidth: 58 }}>{label}</div>
+      {/* Baseline */}
+      <div style={{ width: 56, height: 1, background: '#e5e7eb' }} />
+      {/* Label */}
+      <div style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', lineHeight: 1.3, marginTop: 6, maxWidth: 64 }}>
+        {label}
+      </div>
     </div>
   )
 }
@@ -309,14 +346,17 @@ function MiniStat({ label, value, small }) {
   )
 }
 
-function StudentRow({ student, progress: p, pace, striped, onView, onDelete }) {
+function StudentRow({ student, progress: p, pace, striped, myName, onView, onDelete, onDeleteAccount }) {
+  const myRole = myName
+    ? (student.primaryInstructor === myName ? 'Primary'
+       : student.secondaryInstructor === myName ? 'Secondary'
+       : null)
+    : null
+  const isMine = !!myRole
   const initials = student.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
   const courseAbbr = student.course
     .replace('Commercial', 'Comm')
-    .replace('Private', 'Pvt')
-    .replace('Instrument', 'Inst')
     .replace('Multi Engine Instructor', 'MEI')
-    .replace('Multi Engine', 'ME')
 
   const [hovered, setHovered] = useState(false)
 
@@ -324,12 +364,13 @@ function StudentRow({ student, progress: p, pace, striped, onView, onDelete }) {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 44px',
+        gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 110px',
         gap: 8,
         alignItems: 'center',
         padding: '5px 12px',
         background: hovered ? '#eff6ff' : striped ? '#fafafa' : '#fff',
         borderBottom: '1px solid #f1f5f9',
+        borderLeft: isMine ? '3px solid var(--aa-red)' : '3px solid transparent',
         cursor: 'pointer',
         transition: 'background .1s',
         minHeight: 44,
@@ -349,22 +390,29 @@ function StudentRow({ student, progress: p, pace, striped, onView, onDelete }) {
 
       {/* Name + instructor */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#111827', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {student.name}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.2 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {student.name}
+          </span>
+          {myRole && (
+            <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)', fontSize: 9, padding: '1px 5px', flexShrink: 0 }}>
+              {myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          ✈️ {student.primaryInstructor}
+          Primary instructor: {student.primaryInstructor}
         </div>
       </div>
 
       {/* Course + aircraft */}
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, textAlign: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{courseAbbr}</div>
         <div style={{ fontSize: 10, color: '#9ca3af' }}>{student.aircraft}</div>
       </div>
 
       {/* Base */}
-      <div>
+      <div style={{ textAlign: 'center' }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: '#1a3a5c', background: '#eff6ff', padding: '2px 6px', borderRadius: 4 }}>
           {student.base}
         </span>
@@ -440,14 +488,23 @@ function StudentRow({ student, progress: p, pace, striped, onView, onDelete }) {
         )}
       </div>
 
-      {/* Delete */}
-      <div style={{ textAlign: 'right' }}>
+      {/* Actions: remove from dashboard (light) · delete account (hard) */}
+      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
         <button
-          className="btn btn-sm btn-danger"
-          style={{ fontSize: 11, padding: '2px 7px', minWidth: 0 }}
+          className="btn btn-sm"
+          style={{ fontSize: 10, padding: '2px 6px', minWidth: 0, color: '#6b7280', lineHeight: 1.1 }}
+          title="Remove from dashboard (keeps login account)"
           onClick={(e) => { e.stopPropagation(); onDelete() }}
         >
-          ✕
+          Remove
+        </button>
+        <button
+          className="btn btn-sm btn-danger"
+          style={{ fontSize: 10, padding: '2px 6px', minWidth: 0, lineHeight: 1.1 }}
+          title="Delete account permanently (removes login too)"
+          onClick={(e) => { e.stopPropagation(); onDeleteAccount() }}
+        >
+          Delete account
         </button>
       </div>
     </div>

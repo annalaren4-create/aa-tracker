@@ -7,7 +7,7 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
     name: '',
     school: 'Liberty University',
     course: 'Private 1',
-    aircraft: 'C-172-S',
+    aircraft: 'C-172-L-P',
     primaryInstructor: '',
     secondaryInstructor: '',
     base: activeLocation || 'KHEF',
@@ -71,7 +71,13 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
             <div className="grid2">
               <div>
                 <label>Course</label>
-                <select value={form.course} onChange={(e) => set('course', e.target.value)}>
+                <select value={form.course} onChange={(e) => {
+                  const c = e.target.value
+                  const cflp = ['Private 1', 'Private 2', 'Commercial 1', 'Commercial 2', 'Commercial 3', 'CFI']
+                  const twin = ['Multi Engine', 'Multi Engine Instructor']
+                  const ac = twin.includes(c) ? 'PA-30' : (cflp.includes(c) ? 'C-172-L-P' : 'C-172-S')
+                  setForm((f) => ({ ...f, course: c, aircraft: ac }))
+                }}>
                   {COURSE_NAMES.map((c) => (
                     <option key={c} value={c}>{c}  ({COURSES[c].avia})</option>
                   ))}
