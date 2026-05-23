@@ -82,6 +82,9 @@ export const SEED_STUDENTS = [
     course: 'Instrument', aircraft: 'C-172-S',
     school: 'Liberty University', base: 'KHEF',
     primaryInstructor: 'Basit Bukhari', secondaryInstructor: 'Daniel Wang',
+    courseHistory: [
+      { course: 'Private 2', completedDate: '2026-04-24', primaryInstructor: 'Anna Herrington', syllabusVersion: 'pre-2026-spring', libRepeatsAllowed: 2 },
+    ],
   },
   {
     id: 'seed-04', name: 'Johnathon Mullen',
@@ -122,6 +125,9 @@ export const SEED_STUDENTS = [
     course: 'Commercial 2', aircraft: 'C-172-L-P',
     school: 'Liberty University', base: 'KHEF',
     primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Connor Radomski',
+    courseHistory: [
+      { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang' },
+    ],
   },
   {
     id: 'seed-10', name: 'Trevor Wilkin',
