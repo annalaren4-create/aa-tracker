@@ -36,7 +36,7 @@ export default function App() {
           ...s,
           courseHistory: [
             ...(s.courseHistory || []),
-            { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang', rateDiscount: 0.15 },
+            { course: 'Commercial 1', completedDate: '2026-05-12', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang', rateDiscount: 0.15 },
           ],
         }
       }
@@ -227,31 +227,39 @@ export default function App() {
     }
 
     // One-time: seed Adam Medina's completed Commercial 1 historical logs from
-    // last semester's tracker sheet. Idempotent — only adds if not already present.
+    // last semester. Dates and hours sourced from his CTA flight log (the
+    // school's scheduling system, source of truth) — supersedes the original
+    // tracker which had some incorrect dates.
     const ADAM_ID = 'seed-09'
+    const adamDual  = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })
+    const adamSolo  = (h, date) => ({ solo: h, date, completed: true })
+    const adamCheck = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })
+    const adamComm1Expected = {
+      '1.1': adamDual(3.1, '2026-03-25'),
+      '1.2': adamDual(1.0, '2026-03-25'),
+      '1.3': adamSolo(3.6, '2026-04-06'),
+      '1.4': adamDual(3.9, '2026-04-06'),
+      '1.5': adamSolo(0.9, '2026-04-07'),
+      '2.1': adamSolo(3.9, '2026-04-09'),         // CTA: 4/9 (was 4/10)
+      '2.2': adamSolo(1.4, '2026-04-15'),         // CTA: 4/15 1.4 (was 4/16 1.5)
+      '2.4': adamSolo(3.8, '2026-04-21'),
+      '2.3': adamSolo(6.4, '2026-04-27'),         // CTA: 4/27 (was 4/17)
+      '2A':  adamCheck(2.7, '2026-05-01'),        // CTA: 5/1 (was 4/24)
+      '3.1': adamSolo(2.0, '2026-05-01'),
+      '3.4': adamSolo(6.5, '2026-05-07'),         // CTA: 5/7 (was 5/1)
+      '3A':  adamCheck(2.6, '2026-05-12'),        // CTA: 5/12 (was 5/6)
+    }
     if (!migrated[ADAM_ID]?.['Commercial 1']) {
-      const dual  = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })
-      const solo  = (h, date) => ({ solo: h, date, completed: true })
-      const check = (h, date) => ({ dual: h, ground: 0.7, date, completed: true })  // prog check
-      migrated[ADAM_ID] = {
-        ...(migrated[ADAM_ID] || {}),
-        'Commercial 1': {
-          '1.1': dual(3.1, '2026-03-25'),
-          '1.2': dual(1.0, '2026-03-25'),
-          '1.3': solo(3.6, '2026-04-06'),
-          '1.4': dual(3.9, '2026-04-06'),
-          '1.5': solo(0.9, '2026-04-07'),
-          '2.1': solo(3.9, '2026-04-10'),
-          '2.2': solo(1.5, '2026-04-16'),
-          '2.3': solo(6.4, '2026-04-17'),
-          '2.4': solo(3.8, '2026-04-21'),
-          '2A':  check(2.7, '2026-04-24'),
-          '3.1': solo(2.0, '2026-05-01'),
-          '3.4': solo(6.5, '2026-05-01'),
-          '3A':  check(2.6, '2026-05-06'),
-        },
-      }
+      migrated[ADAM_ID] = { ...(migrated[ADAM_ID] || {}), 'Commercial 1': adamComm1Expected }
       didMigrate = true
+    } else {
+      // Upgrade path: detect old tracker-based seed (where 2.1 was 4/10) and
+      // replace with the CTA-corrected log.
+      const existing = migrated[ADAM_ID]['Commercial 1']
+      if (existing['2.1']?.date === '2026-04-10' || existing['2.3']?.date === '2026-04-17') {
+        migrated[ADAM_ID]['Commercial 1'] = adamComm1Expected
+        didMigrate = true
+      }
     }
     if (didMigrate) lsSet('logs', migrated)
     return migrated
