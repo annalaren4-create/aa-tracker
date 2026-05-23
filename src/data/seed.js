@@ -126,7 +126,9 @@ export const SEED_STUDENTS = [
     school: 'Liberty University', base: 'KHEF',
     primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Connor Radomski',
     courseHistory: [
-      { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang' },
+      // 15% rate discount on Commercial 1 (spouse / family rate — verified
+      // against Aviation Adventures audit). Doesn't apply to current course.
+      { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang', rateDiscount: 0.15 },
     ],
   },
   {

@@ -36,8 +36,19 @@ export default function App() {
           ...s,
           courseHistory: [
             ...(s.courseHistory || []),
-            { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang' },
+            { course: 'Commercial 1', completedDate: '2026-05-06', primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang', rateDiscount: 0.15 },
           ],
+        }
+      }
+      // Backfill rateDiscount on Adam's existing Commercial 1 entry if missing.
+      if (s.id === 'seed-09' && s.courseHistory?.some((h) => h.course === 'Commercial 1' && h.rateDiscount == null)) {
+        return {
+          ...s,
+          courseHistory: s.courseHistory.map((h) =>
+            h.course === 'Commercial 1' && h.rateDiscount == null
+              ? { ...h, rateDiscount: 0.15 }
+              : h
+          ),
         }
       }
       // One-time: seed Gwen Pinto's Private 2 from last semester (primary Anna

@@ -35,7 +35,7 @@ export function splitKeysFor(sLogs, lessonId) {
  * Redbird-only lessons (sm but no d) ignore any logged dual hours so
  * stale data from older lesson definitions can't pollute the cost.
  */
-function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, chargeSimDevice = true, rateOverrides = {}, instructorLineRate, standardAircraftRate) {
+function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, chargeSimDevice = true, rateOverrides = {}, instructorLineRate, standardAircraftRate, rateDiscount = 0) {
   // Rate priority for the non-FSC line rate (highest wins):
   //   1. Specific instructor's lineRate (e.g., chiefs/asst chiefs at $110)
   //   2. Course-level instructorRate override (e.g., MEI at $110)
@@ -67,18 +67,27 @@ function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, char
   if (chargeSimDevice) cost += effSim * SIM_RATE       // Redbird device — skipped when course has unlimited-sim enrollment fee
   cost += effSim     * flightIr                        // instructor present for sim (Part 141 sims are dual)
   cost += ground     * groundRate                      // ground instruction
-  return { cost, oopAircraftSurcharge, flightTime, effSim }
+
+  // Per-student rate discount (e.g. spouse / family discount). Caller decides
+  // whether to apply it — typically only on the student's CURRENT course so
+  // historical billed-at-the-time courses aren't retroactively adjusted.
+  const discMul = 1 - (rateDiscount || 0)
+  return {
+    cost: cost * discMul,
+    oopAircraftSurcharge: oopAircraftSurcharge * discMul,
+    flightTime, effSim,
+  }
 }
 
 /**
  * Expected cost for an unstarted lesson at its target hours.
  */
-function lessonExpectedCost(lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate) {
+function lessonExpectedCost(lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, rateDiscount = 0) {
   const d  = lesson.d  || 0
   const s  = lesson.s  || 0
   const sm = lesson.sm || 0
   const g  = lesson.g  || 0
-  const { cost, oopAircraftSurcharge } = lessonCost(lesson, d, s, sm, g, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate)
+  const { cost, oopAircraftSurcharge } = lessonCost(lesson, d, s, sm, g, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, rateDiscount)
   // For projections we include the surcharge in the projected total spend (it
   // still hits the student, just under the OOP bucket).
   return { luCost: cost, oopCost: oopAircraftSurcharge }
@@ -105,6 +114,13 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   const isLiberty = student.school === 'Liberty University'
   const standardAircraft = isLiberty ? LU_STANDARD_AIRCRAFT[activeCourse] : null
   const standardAircraftRate = standardAircraft ? AIRCRAFT_RATES[standardAircraft] : null
+  // Rate discount: prefer the per-course override on the courseHistory entry
+  // (e.g. Adam's 15% applied only to Commercial 1) over a student-level field.
+  // Falls back to 0 (full rates) when neither is set.
+  const courseHistEntry = student.courseHistory?.find((h) => h.course === activeCourse)
+  const effectiveDiscount = (courseHistEntry?.rateDiscount != null)
+    ? courseHistEntry.rateDiscount
+    : (student.rateDiscount || 0)
   const chargeSimDevice = !course.simUnlimited
   const enrollmentFee = course.enrollmentFee || 0
   const rateOverrides = { flight: course.instructorRate, ground: course.groundRate }
@@ -182,6 +198,7 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
       rateOverrides,
       loggedInstrRate,
       standardAircraftRate,
+      effectiveDiscount,
     )
     if (isOop) oopCost += lc
     else       cost    += lc
@@ -221,7 +238,7 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   course.lessons.forEach((lesson) => {
     if (isStarted(sLogs[lesson.id])) return   // already started — captured in actual cost
     const { luCost, oopCost: oopForLesson } = lessonExpectedCost(
-      lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate
+      lesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount
     )
     remainingLuCost  += luCost
     remainingOopCost += oopForLesson
@@ -241,7 +258,7 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   // typical extra lesson (2.0 hr dual + 0.7 hr ground at the student's rates).
   const bufferLesson = { d: 2.0, g: 0.7 }
   const { luCost: bufferLu, oopCost: bufferOop } = lessonExpectedCost(
-    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate
+    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount
   )
   const projectedWithRepeat = Math.round(cost + remainingLuCost + bufferLu + bufferOop)
 

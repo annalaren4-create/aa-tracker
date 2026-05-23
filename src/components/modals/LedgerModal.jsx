@@ -35,6 +35,13 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
       // Per-log aircraft override; falls back to the student's default.
       const aircraftUsed = lg.aircraft || student.aircraft
       const aircraftRate = AIRCRAFT_RATES[aircraftUsed] || defaultAircraftRate
+      // Rate discount: prefer the per-course override on the courseHistory
+      // entry, else fall back to the student-level field, else no discount.
+      const histEntry = student.courseHistory?.find((h) => h.course === activeCourse)
+      const effectiveDiscount = (histEntry?.rateDiscount != null)
+        ? histEntry.rateDiscount
+        : (student.rateDiscount || 0)
+      const discMul = 1 - effectiveDiscount
       // Liberty pays aircraft at the "least expensive" rate for the course.
       // Anything extra (S model vs L/P, etc.) is an OOP aircraft surcharge.
       const isLiberty = student.school === 'Liberty University'
@@ -44,11 +51,13 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
         ? standardAircraftRate
         : aircraftRate
       const flightHours = dual + solo
-      const aircraftCost      = flightHours * luAircraftRate
-      const aircraftSurcharge = flightHours * Math.max(0, aircraftRate - luAircraftRate)
-      const instructorCost = dual * flightIr + sim * flightIr
-      const simDeviceCost  = chargeSimDevice ? sim * SIM_RATE : 0
-      const groundCost     = ground * groundRate
+      // Apply the per-student discount to every line item so the ledger matches
+      // what the school actually charges.
+      const aircraftCost      = flightHours * luAircraftRate * discMul
+      const aircraftSurcharge = flightHours * Math.max(0, aircraftRate - luAircraftRate) * discMul
+      const instructorCost = (dual * flightIr + sim * flightIr) * discMul
+      const simDeviceCost  = (chargeSimDevice ? sim * SIM_RATE : 0) * discMul
+      const groundCost     = ground * groundRate * discMul
       const luLessonCost   = aircraftCost + instructorCost + simDeviceCost + groundCost
       const totalCost      = luLessonCost + aircraftSurcharge
       const totalHours     = dual + solo + sim
