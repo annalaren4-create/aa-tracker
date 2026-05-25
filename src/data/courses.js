@@ -21,20 +21,20 @@ export const COURSES = {
     avia: 'AVIA220',
     targetTotal: 28.4,
     lessons: [
-      { id: '1.1', d: 1.5, g: 1.0, t: 1.5, o: 'Safety, preflight, normal TO&L, S&L, climbs, descents, turns' },
-      { id: '1.2', d: 1.5, g: 1.0, t: 1.5, o: 'Normal TO, S&L, climbs, descents, turns, PONF landing' },
-      { id: '1.3', d: 1.8, g: 0.7, t: 1.8, o: 'TO, S&L, slow flt, power off stall, radios, PONF landing' },
-      { id: '2.1', d: 1.8, g: 0.7, t: 1.8, o: 'Stall/spin aware, power off/on stalls, TO & climb, PONF' },
-      { id: '2.2', d: 1.8, g: 0.7, t: 1.8, o: 'Xwind, crabbing, ground ref, sideslip, power-on stall, PONF' },
-      { id: '2.3', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'Stalls, crab, sideslip, ADM, steep turns, IR turns, PONF' },
-      { id: '2.4', d: 1.8, g: 0.7, t: 1.8, pc: true, o: 'Prog Check: SA, TPs, go around, PONF landings' },
-      { id: '3.1', d: 1.8, g: 0.7, t: 1.8, o: 'SA, perf charts, TPs, go around, PONF' },
-      { id: '3.2', d: 1.8, g: 0.7, t: 1.8, o: 'TPs, PONF landings, go around, crab/sideslip' },
-      { id: '3.3', d: 1.8, g: 0.7, t: 1.8, o: 'Slow flt, stalls, TP, PONF, sim eng out, emerg descent' },
-      { id: '4.1', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'IR S&L, IR turns, sim eng out, rect course, turn around point, s turns' },
-      { id: '4.2', d: 1.8, g: 0.7, t: 1.8, o: 'Emerg desc, slow flt, stalls, wind shear, sim engine out' },
-      { id: '4.3', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'Slow flt, stalls, IR turns, steep turns, unusual att, emerg descent' },
-      { id: '5.1', d: 2.0, i: 0.1, g: 0.7, t: 2.0, sc: true, o: 'Stage Check: Xwind, TO, slow flt, stalls, crab, sideslip, PONF' },
+      { id: '1.1', d: 1.5, g: 1.0, t: 1.5, o: 'Safety practices & procedures, Preflight inspection, Checklist usage, Taxiing, Demo Normal TO & climb, Demo Level off, trim usage, S&L flight, Area fam, Collision avoid, Stability demo (yaw-pitch-roll), Climbs & descents, Medium bank turns, Turn coord, Turn entry/roll out, Demo no power no flap approach & land' },
+      { id: '1.2', d: 1.5, g: 0.7, t: 1.5, o: 'Normal TO & climb, Level off, trim usage, S&L flight, Area fam, Climbs & descents, Turns, Turn entry/roll out, Demo no power no flaps approach & land' },
+      { id: '1.3', d: 1.8, g: 0.7, t: 1.8, o: 'TO & climb, Left turn tend, Level off, trim use, S&L flight, climbs, descents w/wo flaps, Climbing/Descending turns, Power off/spin, Climbing TO, Turn entry/roll out, slow flt, power off stall, radios, Power Off No Flap landing (PONF)' },
+      { id: '2.1', d: 1.8, g: 0.7, t: 1.8, o: 'Stall/spin aware, trim, power-off stalls, rudder use at high AOA, rudder & power in stall recov, radios, xwind taxi, TO & climb, TP entry/dep, Power off no flap land' },
+      { id: '2.2', d: 1.8, g: 0.7, t: 1.8, o: 'Xwind taxi, TO and climb, trim, crabbing, Ground ref, Sideslip, Forward slip, slow flt, stalls, TP, Power Off No Flap landing' },
+      { id: '2.3', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'Xwind taxi, TO & climb, power on/off stalls, crab, sideslip, ADM, steep turns, IR turns, climbs, descents, Radios, Power Off No Flap landing' },
+      { id: '2.4', d: 1.8, g: 0.7, t: 1.8, pc: true, o: 'Prog Check: Xwind taxi, TO & climb, slow flt, power on/off stalls, crab, sideslip, trim usage, collision avoid, Radios, Power Off No Flap landing' },
+      { id: '3.1', d: 1.8, g: 0.7, t: 1.8, o: 'SA, perf charts, TPs, go around, Radios, crab, sideslip, Power Off No Flap landings (PONF landings until student safely lands unassisted)' },
+      { id: '3.2', d: 1.8, g: 0.7, t: 1.8, o: 'TPs, radios, Power Off No Flap landings, go around, crab/sideslip' },
+      { id: '3.3', d: 1.8, g: 0.7, t: 1.8, o: 'Slow flt, stalls, TP, Power Off No Flap landings, go around, radios, sim eng out @ alt, at Vy & Vx, emerg descent' },
+      { id: '4.1', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'Xwind taxi, radios, trim, IR S&L, IR climb/descend turns, sim eng out, rect course, turn around point, s turns, PONF or normal (if ready) landing, emerg/fail radio, GPS direct to/nrst airport function' },
+      { id: '4.2', d: 1.8, g: 0.7, t: 1.8, o: 'Xwind taxi, TO & climb, emer desc, slow flt, power on/off stall, PONF or normal land, wind shear, wake turb, sim engine out to land, go around' },
+      { id: '4.3', d: 1.8, i: 0.3, g: 0.7, t: 1.8, o: 'Slow flt, power on/off stall, IR climbing/descending turns, steep turns, system/equip malf, unusual attitudes, emerg descent, sim engine out to land, Forward slip, go around, PONF or normal land' },
+      { id: '5.1', d: 2.0, i: 0.1, g: 0.7, t: 2.0, sc: true, o: 'Stage Check: Radios, xwind taxi, TO & climb, trim, slow flt, pwr on/off stall, IR GPS D-to/nrst airport, emerg ops, ground ref, TP entry/dep, go around, PONF or normal landing' },
       { id: '5.2', d: 1.0, s: 0.8, g: 0.7, t: 1.8, o: 'First solo — TO/L to full stop, radios, TP, go around' },
       { id: '5.3', d: 1.0, s: 0.8, g: 0.7, t: 1.8, o: 'Second solo — TO/L to full stop, radios, TP, go around' },
     ],
@@ -65,9 +65,11 @@ export const COURSES = {
   Instrument: {
     avia: 'AVIA320',
     targetTotal: 42.5,
-    // $1,000 one-time at enrollment; covers unlimited Redbird sim time for 3 months
-    // (students can practice on their own outside of scheduled lessons).
+    // $1,000 one-time "Simulator Package" at enrollment; covers unlimited
+    // Redbird sim time for 3 months (students can practice on their own
+    // outside of scheduled lessons).
     enrollmentFee: 1000,
+    enrollmentFeeLabel: 'Simulator Package',
     simUnlimited: true,
     lessons: [
       { id: '1.1-1.2', sm: 1.0, g: 1.0, t: 1.0, o: 'Basic instrument maneuvers, S&L, turns, climbs, descents' },

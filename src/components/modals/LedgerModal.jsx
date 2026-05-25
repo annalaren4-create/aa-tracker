@@ -201,7 +201,8 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
           )}
           {mode === 'cost' && course?.enrollmentFee > 0 && (
             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
-              Running starts at ${course.enrollmentFee.toLocaleString()} one-time enrollment fee.
+              Running starts at ${course.enrollmentFee.toLocaleString()}{' '}
+              {course.enrollmentFeeLabel ? course.enrollmentFeeLabel : 'one-time enrollment fee'}.
             </div>
           )}
         </div>

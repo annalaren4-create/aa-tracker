@@ -397,6 +397,11 @@ export default function StudentDetail({
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
               </div>
+              {course?.enrollmentFee > 0 && course?.enrollmentFeeLabel && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  Incl. ${course.enrollmentFee.toLocaleString()} {course.enrollmentFeeLabel}
+                </div>
+              )}
               {/* One OOP line. If a forward projection is meaningfully larger
                   than what's been incurred, show both as "so far · est. at end".
                   Otherwise just show the single number. */}
@@ -524,15 +529,17 @@ export default function StudentDetail({
             // Split continuations come right after the original lesson row,
             // before any repeats. They're billed as Lib-funded.
             splitKeysFor(sLogs, lesson.id).forEach((sk) => items.push({ key: sk, isSplit: true }))
-            // If the latest split was marked "Split — finish later" and there
-            // isn't an empty next-split row yet, spawn one so the instructor
-            // has somewhere to log the next session.
+            // If the latest entry was marked "Split — finish later" OR just
+            // Incomplete, spawn the next __sN continuation row. (Incomplete
+            // on any lesson now finishes the leftover time as Liberty-funded,
+            // not as an OOP repeat.)
             const splitKeys = splitKeysFor(sLogs, lesson.id)
             const lastSplitKey = splitKeys[splitKeys.length - 1]
             const lastSplitLg  = lastSplitKey ? sLogs[lastSplitKey] : null
+            const continuingSignal = (lg) => !!(lg?.splitContinuing || lg?.incomplete)
             const needsNextSplit =
-              (myLg.splitContinuing && splitKeys.length === 0) ||
-              (lastSplitLg?.splitContinuing && lastSplitKey)
+              (continuingSignal(myLg) && splitKeys.length === 0) ||
+              (continuingSignal(lastSplitLg) && lastSplitKey)
             if (needsNextSplit) {
               const usedSplitNums = splitKeys.map((k) => parseInt(k.split('__s')[1], 10) || 0)
               const nextSplitNum  = (usedSplitNums.length ? Math.max(...usedSplitNums) : 0) + 1
@@ -547,8 +554,11 @@ export default function StudentDetail({
             // Find the latest log entry for this lesson chain.
             const latestKey = repeatKeys.length > 0 ? repeatKeys[repeatKeys.length - 1] : lesson.id
             const latestLg  = sLogs[latestKey] || {}
+            // Only explicit Repeat flags spawn a __rN repeat row. Incomplete
+            // now spawns a __sN continuation (handled in the split block above)
+            // so the leftover time bills as Liberty-funded, not as a repeat.
             const latestNeedsFollowup =
-              latestLg.repeatedLib || latestLg.repeatedOop || latestLg.incomplete
+              latestLg.repeatedLib || latestLg.repeatedOop
             if (latestNeedsFollowup) {
               const usedNums = repeatKeys.map((k) => parseInt(k.split('__r')[1], 10) || 0)
               const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
@@ -577,6 +587,47 @@ export default function StudentDetail({
             const repeatNum = isRepeat ? (parseInt(key.split('__r')[1], 10) || 1) : 0
             const repeatIdx = isRepeat ? repeatNum - 1 : 0
             const repeatBadge = isRepeat ? repeatBillingType(lesson, repeatIdx) : null
+
+            // Split target redistribution: when a lesson is being split across
+            // multiple sessions, divide the lesson's total target between them.
+            //  - Original row's "target" = hours actually logged this session
+            //  - Each split row's "target" = remaining unfilled portion of the
+            //    lesson, given what's been logged earlier in the chain
+            // Sum across the chain therefore equals the lesson's original target.
+            // Include the *placeholder* __sN row in the chain too, so on the
+            // very first split the original row's target shrinks immediately
+            // even before any real __sN data exists in storage yet.
+            const splitsStorage   = splitKeysFor(sLogs, lesson.id)
+            const baseOrigLg      = sLogs[lesson.id] || {}
+            const lastStoredKey   = splitsStorage[splitsStorage.length - 1]
+            const lastStoredLg    = lastStoredKey ? sLogs[lastStoredKey] : null
+            const placeholderPending =
+              (!lastStoredKey && (baseOrigLg.splitContinuing || baseOrigLg.incomplete)) ||
+              (lastStoredKey  && (lastStoredLg?.splitContinuing || lastStoredLg?.incomplete))
+            const effectiveSplitKeys = (() => {
+              if (!placeholderPending) return splitsStorage
+              const nums = splitsStorage.map((k) => parseInt(k.split('__s')[1], 10) || 0)
+              const nextN = (nums.length ? Math.max(...nums) : 0) + 1
+              return [...splitsStorage, `${lesson.id}__s${nextN}`]
+            })()
+            const splitChainKeys = [lesson.id, ...effectiveSplitKeys]
+            const inSplitChain   = splitChainKeys.length > 1
+            const myChainIdx     = inSplitChain ? splitChainKeys.indexOf(key) : -1
+            let splitDisplayTarget = null
+            if (inSplitChain && myChainIdx >= 0) {
+              const myActual = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
+              if (myChainIdx === 0) {
+                // Original row — target is what was actually flown this session.
+                splitDisplayTarget = myActual
+              } else {
+                // Split row — target is whatever's left of the lesson total.
+                const priorActual = splitChainKeys.slice(0, myChainIdx).reduce((s, k) => {
+                  const pl = sLogs[k] || {}
+                  return s + (pl.dual || 0) + (pl.solo || 0) + (pl.sim || 0)
+                }, 0)
+                splitDisplayTarget = Math.max(0, (lesson.t || 0) - priorActual)
+              }
+            }
 
             // If this row was auto-marked completed via a sibling lesson's
             // "Combined with" flag, redirect any click to the primary lesson.
@@ -675,18 +726,24 @@ export default function StudentDetail({
 
                 {/* Syllabus targets — read-only single numbers per lesson.
                     Uses showLesson so combined pairs (e.g. 8.1 + 8.2) display
-                    the summed targets on one line. */}
-                <TargetCell value={showLesson.d  || showLesson.sm} />
-                <TargetCell value={showLesson.s} />
-                <TargetCell value={showLesson.x} />
-                <TargetCell value={showLesson.i} />
-                <TargetCell value={showLesson.sm} />
-                <TargetCell value={showLesson.t} bold />
+                    the summed targets on one line. Split-continuation rows
+                    show "—" for the per-bucket sub-targets, but the Target
+                    column shows the row's portion of the lesson total. */}
+                <TargetCell value={isSplit ? 0 : (showLesson.d  || showLesson.sm)} />
+                <TargetCell value={isSplit ? 0 : showLesson.s} />
+                <TargetCell value={isSplit ? 0 : showLesson.x} />
+                <TargetCell value={isSplit ? 0 : showLesson.i} />
+                <TargetCell value={isSplit ? 0 : showLesson.sm} />
+                <TargetCell value={splitDisplayTarget !== null ? splitDisplayTarget : (showLesson.t)} bold />
 
-                {/* Actual flight time logged this attempt */}
+                {/* Actual flight time logged this attempt. For split chains
+                    we use the redistributed per-row target so over/under is
+                    meaningful within each session. */}
                 {(() => {
                   const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
-                  const target    = showLesson.t || 0
+                  const target    = splitDisplayTarget !== null
+                    ? splitDisplayTarget
+                    : (showLesson.t || 0)
                   const diff      = actualFlt - target
                   const showDiff  = actualFlt > 0 && target > 0
                   return (
@@ -890,14 +947,14 @@ export default function StudentDetail({
               const currentNum = parseInt(logLesson.key.split('__s')[1], 10) || 0
               const parentLg = sLogs[parentId] || {}
               if (!parentLg.completed) {
-                onLogFlight(student.id, viewCourse, parentId, { ...parentLg, completed: true, splitContinuing: undefined })
+                onLogFlight(student.id, viewCourse, parentId, { ...parentLg, completed: true, splitContinuing: undefined, incomplete: undefined })
               }
               splitKeysFor(sLogs, parentId).forEach((sk) => {
                 const num = parseInt(sk.split('__s')[1], 10) || 0
                 if (num < currentNum) {
                   const slg = sLogs[sk] || {}
                   if (!slg.completed) {
-                    onLogFlight(student.id, viewCourse, sk, { ...slg, completed: true, splitContinuing: undefined })
+                    onLogFlight(student.id, viewCourse, sk, { ...slg, completed: true, splitContinuing: undefined, incomplete: undefined })
                   }
                 }
               })

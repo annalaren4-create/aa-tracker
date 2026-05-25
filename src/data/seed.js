@@ -4,7 +4,7 @@ export const SEED_INSTRUCTORS = [
   // ── KHEF (Manassas) ────────────────────────────────────────────────
   { name: 'Ademola Desalu',    cert: 'CFI',          base: 'KHEF', phone: '408-930-8203',  email: 'abdesalu+cfi@gmail.com' },
   { name: 'Amanda Haney',      cert: 'CFI/CFII',     base: 'KHEF' },
-  { name: 'Anna Herrington',   cert: 'CFI/CFII',     base: 'KHEF', phone: '251-802-9070',  email: 'alh0134@auburn.edu' },
+  { name: 'Anna Herrington',   cert: 'CFI/CFII',     base: 'KHEF', phone: '251-802-9070',  email: 'annalaren4@gmail.com' },
   { name: 'Anthony Wright',    cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, phone: '240-298-1424', email: 'awwsomd@gmail.com' },
   { name: 'Basit Bukhari',     cert: 'CFI/CFII',     base: 'KHEF', phone: '+1 571-619-4128', email: 'basitbukhari349@gmail.com' },
   { name: 'Bob Hepp',          cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, phone: '703-915-0428', email: 'nightowl@aviationadventures.com' },
@@ -124,7 +124,7 @@ export const SEED_STUDENTS = [
     id: 'seed-09', name: 'Adam Medina',
     course: 'Commercial 2', aircraft: 'C-172-L-P',
     school: 'Liberty University', base: 'KHEF',
-    primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Connor Radomski',
+    primaryInstructor: 'Anna Herrington', secondaryInstructor: 'Daniel Wang',
     courseHistory: [
       // 15% rate discount on Commercial 1 (spouse / family rate — verified
       // against Aviation Adventures audit). Doesn't apply to current course.

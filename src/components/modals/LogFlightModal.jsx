@@ -93,6 +93,11 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
     // XC / Sim / Hood / Night are syllabus targets (shown read-only). We don't
     // copy them into the log as concrete logged values — only Actual Flight Time
     // (allocated to dual/solo/sim above) and Ground time are tracked per-attempt.
+    // When Split is checked, the session is by definition not finished — auto-
+    // mark Incomplete (overriding any conflicting status) and clear Completed.
+    // The Incomplete flag triggers the visual "incomplete" pill; the separate
+    // _splitContinuing flag drives the __sN continuation row (NOT a __r repeat).
+    const isSplit = splitChecked && lesson.splittable
     onSave({
       ...form,
       // Don't persist an empty aircraft string — leave it undefined so the
@@ -100,12 +105,14 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
       aircraft: form.aircraft || undefined,
       dual, solo, sim, ground,
       xc: 0, hood: 0, night: 0,
+      completed:  isSplit ? false : form.completed,
+      incomplete: isSplit ? true  : form.incomplete,
       _repeatAgain: repeatAgainChecked,
       _combineWith: combineChecked && lesson.combinableWith ? lesson.combinableWith : undefined,
       // Explicitly signal "uncombine" so StudentDetail can clear the sibling's
       // combinedFrom flag when the box was unchecked.
       _uncombineSibling: !combineChecked && siblingAlreadyCombined && lesson.combinableWith ? lesson.combinableWith : undefined,
-      _splitContinuing: splitChecked && lesson.splittable ? true : undefined,
+      _splitContinuing: isSplit || undefined,
     })
   }
 

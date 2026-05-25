@@ -212,7 +212,7 @@ export default function ManageInstructorsModal({
                                 {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
                               </select>
                               <div style={{ display: 'flex', gap: 4 }}>
-                                <button className="btn btn-sm btn-primary" onClick={saveEdit} title="Save (Enter)">✓</button>
+                                <button className="btn btn-sm btn-primary" onClick={saveEdit} title="Save (Enter)">Save</button>
                                 <button className="btn btn-sm" onClick={cancelEdit} title="Cancel (Esc)">✕</button>
                               </div>
                             </div>
@@ -346,16 +346,19 @@ export default function ManageInstructorsModal({
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            {onUpdate && (
+                            {/* Non-chiefs can only edit their own profile;
+                                chiefs can edit anyone. Delete also chief-only. */}
+                            {onUpdate && (isChief || isMe) && (
                               <button
                                 className="instr-remove-btn"
-                                title="Edit"
+                                title={isMe ? 'Edit your info' : 'Edit'}
                                 style={{ color: '#6b7280' }}
                                 onClick={() => startEdit(ins)}
                               >
                                 ✏
                               </button>
                             )}
+                            {isChief && (
                             <button
                               className="instr-remove-btn"
                               title="Remove"
@@ -363,6 +366,7 @@ export default function ManageInstructorsModal({
                             >
                               ✕
                             </button>
+                            )}
                           </div>
                         </div>
                       )
@@ -375,7 +379,7 @@ export default function ManageInstructorsModal({
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-primary" onClick={onClose}>Done</button>
+          <button className="btn" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>
