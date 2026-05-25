@@ -28,7 +28,7 @@ function getBudgetPace(p) {
   // 20 percentage points ahead of completion% AND >50% of budget used, flag it —
   // these are students chiefs need to spot first when skimming the dashboard.
   const atRisk = spendPct > 50 && (spendPct - expectedPct) > 20
-  return { spendPct, expectedPct, projected, status, remaining, atRisk }
+  return { spendPct, expectedPct, projected, status, remaining, flatRate: p.flatRate, atRisk }
 }
 
 export default function ChiefDash({
@@ -542,20 +542,24 @@ function StudentRow({ student, progress: p, pace, striped, myName, instructors =
         )}
       </div>
 
-      {/* Remaining budget */}
+      {/* Remaining budget shown as "$remaining / $flatRate" so the chief
+          sees current LU balance against the total allotted funds at a
+          glance. Negative remaining renders red with a minus sign. */}
       <div style={{ textAlign: 'right' }}>
         {pace ? (
           <>
-            <div style={{
-              fontSize: 12, fontWeight: 700,
-              color: pace.remaining >= 0 ? '#15803d' : '#dc2626',
-            }}>
-              {pace.remaining >= 0
-                ? `$${Math.round(pace.remaining).toLocaleString()}`
-                : `-$${Math.round(Math.abs(pace.remaining)).toLocaleString()}`}
+            <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>
+              <span style={{ color: pace.remaining >= 0 ? '#15803d' : '#dc2626' }}>
+                {pace.remaining >= 0
+                  ? `$${Math.round(pace.remaining).toLocaleString()}`
+                  : `-$${Math.round(Math.abs(pace.remaining)).toLocaleString()}`}
+              </span>
+              <span style={{ color: '#9ca3af', fontWeight: 500 }}>
+                {' / '}${Math.round(pace.flatRate).toLocaleString()}
+              </span>
             </div>
             <div style={{ fontSize: 9, color: '#9ca3af' }}>
-              {pace.remaining >= 0 ? 'left' : 'over'}
+              {pace.remaining >= 0 ? 'left of allotted' : 'over allotted'}
             </div>
           </>
         ) : (
