@@ -3,6 +3,7 @@ import { LOCATIONS } from '../data/constants'
 import { COURSES } from '../data/courses'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
+import { eqName } from '../utils/storage'
 
 const ALL = 'All'
 
@@ -83,8 +84,8 @@ export default function ChiefDash({
   const myName = account?.name
   const myRank = (s) => {
     if (!myName) return 2
-    if (s.primaryInstructor === myName) return 0
-    if (s.secondaryInstructor === myName) return 1
+    if (eqName(s.primaryInstructor, myName)) return 0
+    if (eqName(s.secondaryInstructor, myName)) return 1
     return 2
   }
   const visibleStudents = [...filtered].sort((a, b) => {
@@ -361,8 +362,8 @@ function MiniStat({ label, value, small }) {
 
 function StudentRow({ student, progress: p, pace, striped, myName, instructors = [], onUpdateStudent, onView, onDelete, onDeleteAccount }) {
   const myRole = myName
-    ? (student.primaryInstructor === myName ? 'Primary'
-       : student.secondaryInstructor === myName ? 'Secondary'
+    ? (eqName(student.primaryInstructor, myName) ? 'Primary'
+       : eqName(student.secondaryInstructor, myName) ? 'Secondary'
        : null)
     : null
   const isMine = !!myRole

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, overUnder, repeatKeysFor, splitKeysFor } from '../utils/calculations'
+import { eqName } from '../utils/storage'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
@@ -289,7 +290,7 @@ export default function StudentDetail({
 
         {/* Instructor contact card — visible to students AND instructors */}
         {(() => {
-          const findInstr = (n) => n ? instructors.find((i) => i.name === n) : null
+          const findInstr = (n) => n ? instructors.find((i) => eqName(i.name, n)) : null
           // When viewing a past course, prefer the primary/secondary recorded
           // for that course in courseHistory; otherwise fall back to current.
           const histEntry = isViewingPastCourse

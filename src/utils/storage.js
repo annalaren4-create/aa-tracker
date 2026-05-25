@@ -20,3 +20,13 @@ export function lsSet(key, value) {
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
+
+/**
+ * Case-insensitive, whitespace-trimmed name equality.
+ * Use for any "is this the logged-in user?" comparison so registration
+ * casing/spacing differences don't break "show my profile first" logic.
+ */
+export function eqName(a, b) {
+  if (!a || !b) return false
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase()
+}

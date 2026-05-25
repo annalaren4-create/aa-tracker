@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { LOCATIONS, INSTRUCTOR_CERTS } from '../../data/constants'
+import { eqName } from '../../utils/storage'
 
 export default function ManageInstructorsModal({
   instructors, onAdd, onDelete, onUpdate, onClose, activeLocation, myName, isChief = false,
@@ -8,7 +9,7 @@ export default function ManageInstructorsModal({
   // Default the base filter to the LOGGED-IN instructor's own base, falling back
   // to the dashboard's active location, then to 'All'. So when Bob Hepp (KHEF)
   // opens this modal, he immediately sees the KHEF roster.
-  const myBaseInit = myName ? instructors.find((i) => i.name === myName)?.base : null
+  const myBaseInit = myName ? instructors.find((i) => eqName(i.name, myName))?.base : null
   const defaultBase = myBaseInit
     || (activeLocation && activeLocation !== 'All' ? activeLocation : 'KHEF')
 
@@ -74,8 +75,8 @@ export default function ManageInstructorsModal({
   // Float the logged-in instructor's own record(s) to the top of each base group
   // so they see themselves first when opening the modal.
   const meFirst = (a, b) => {
-    const aMe = myName && a.name === myName ? 0 : 1
-    const bMe = myName && b.name === myName ? 0 : 1
+    const aMe = eqName(a.name, myName) ? 0 : 1
+    const bMe = eqName(b.name, myName) ? 0 : 1
     return aMe - bMe
   }
 
@@ -86,7 +87,7 @@ export default function ManageInstructorsModal({
     return acc
   }, {})
   // Reorder the base sections so the logged-in instructor's base appears first.
-  const myBase = myName ? instructors.find((i) => i.name === myName)?.base : null
+  const myBase = myName ? instructors.find((i) => eqName(i.name, myName))?.base : null
   if (myBase && grouped[myBase]) {
     const { [myBase]: mine, ...rest } = grouped
     Object.keys(rest).forEach((k) => { /* no-op, just enumerate */ })
@@ -189,7 +190,7 @@ export default function ManageInstructorsModal({
                   )}
                   <div style={{ display: 'grid', gap: 5 }}>
                     {list.map((ins) => {
-                      const isMe = myName && ins.name === myName
+                      const isMe = eqName(ins.name, myName)
                       const isEditing = editing && editing.name === ins.name && editing.base === ins.base
                       if (isEditing) {
                         return (

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LOCATIONS } from '../data/constants'
 import { COURSES } from '../data/courses'
 import { budgetPct } from '../utils/calculations'
+import { eqName } from '../utils/storage'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
 
@@ -19,7 +20,7 @@ export default function InstructorDash({
 
   // Split into "mine" (this instructor is primary or secondary) vs. others
   const myName = account?.name
-  const isMine = (s) => myName && (s.primaryInstructor === myName || s.secondaryInstructor === myName)
+  const isMine = (s) => myName && (eqName(s.primaryInstructor, myName) || eqName(s.secondaryInstructor, myName))
   const myStudents = myName ? locationStudents.filter(isMine) : []
   const otherStudents = myName ? locationStudents.filter((s) => !isMine(s)) : locationStudents
 
@@ -178,7 +179,7 @@ function StudentCard({ student, progress: p, isMine, myName, onView, onDelete })
 
   // Indicate whether this instructor is primary or secondary
   const myRole = isMine && myName
-    ? (student.primaryInstructor === myName ? 'Primary' : 'Secondary')
+    ? (eqName(student.primaryInstructor, myName) ? 'Primary' : 'Secondary')
     : null
 
   return (

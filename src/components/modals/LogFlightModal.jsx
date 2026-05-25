@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES } from '../../data/constants'
+import { eqName } from '../../utils/storage'
 
 /**
  * Simplified flight log:
@@ -60,7 +61,7 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   // start in custom-text mode with their name already typed instead of showing
   // an empty "— select instructor —" dropdown.
   const initialInstructorName = existing.instructor || defaultInstructor || ''
-  const matchesRoster = instructors.some((i) => i.name === initialInstructorName)
+  const matchesRoster = instructors.some((i) => eqName(i.name, initialInstructorName))
   const [customInstr, setCustomInstr] = useState(!!initialInstructorName && !matchesRoster)
   const [repeatAgainChecked, setRepeatAgainChecked] = useState(false)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
