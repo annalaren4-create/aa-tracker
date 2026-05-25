@@ -9,7 +9,7 @@ import LedgerModal from './modals/LedgerModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 
 // Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Date · Status
-const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 64px 56px 1fr 88px 64px'
+const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 88px 64px'
 
 export default function StudentDetail({
   student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
@@ -516,16 +516,16 @@ export default function StudentDetail({
             minWidth: 1080,
           }}>
             <span>Lesson</span>
-            <span style={{ textAlign: 'right' }}>Dual</span>
-            <span style={{ textAlign: 'right' }}>Solo</span>
-            <span style={{ textAlign: 'right' }}>XC</span>
-            <span style={{ textAlign: 'right' }} title="Hood / instrument time">Instr</span>
-            <span style={{ textAlign: 'right' }} title="Simulator hours">Sim</span>
-            <span style={{ textAlign: 'right' }} title="Target total flight time for the lesson">Target</span>
-            <span style={{ textAlign: 'right' }} title="Actual flight time logged this attempt">Actual</span>
-            <span style={{ textAlign: 'right' }} title="Actual minus target — amber if over, green if under">Over/Under</span>
-            <span style={{ textAlign: 'right' }}>Ground</span>
-            <span>Objectives</span>
+            <span style={{ textAlign: 'center' }}>Dual</span>
+            <span style={{ textAlign: 'center' }}>Solo</span>
+            <span style={{ textAlign: 'center' }}>XC</span>
+            <span style={{ textAlign: 'center' }} title="Hood / instrument time">Instr</span>
+            <span style={{ textAlign: 'center' }} title="Simulator hours">Sim</span>
+            <span style={{ textAlign: 'center' }} title="Target total flight time for the lesson">Target</span>
+            <span style={{ textAlign: 'center' }} title="Actual flight time logged this attempt">Actual</span>
+            <span style={{ textAlign: 'center', paddingLeft: 16 }} title="Actual minus target — amber if over, green if under">Over/Under</span>
+            <span style={{ textAlign: 'center' }}>Ground</span>
+            <span style={{ textAlign: 'center' }}>Objectives</span>
             <span style={{ textAlign: 'center' }}>Date</span>
             <span style={{ textAlign: 'center' }}>Status</span>
           </div>
@@ -700,12 +700,19 @@ export default function StudentDetail({
                       ? 'rgba(2,132,199,.04)'
                       : isRepeat
                         ? 'rgba(220,38,38,.04)'
-                        : lesson.sc ? 'rgba(26,58,92,.05)' : lesson.pc ? 'rgba(245,158,11,.04)' : '',
+                        : lesson.fsc ? 'rgba(185,28,28,.12)'    // FSC — bold red wash, biggest visual weight
+                        : lesson.sc  ? 'rgba(26,58,92,.05)'     // regular / mock stage check
+                        : lesson.pc  ? 'rgba(245,158,11,.04)'   // prog check
+                        : '',
                   borderLeft: isCombinedChild
                     ? '3px solid #0284c7'
                     : isSplit
                       ? '3px solid #0284c7'
-                      : isRepeat ? '3px solid #dc2626' : undefined,
+                      : isRepeat
+                        ? '3px solid #dc2626'
+                        : lesson.fsc
+                          ? '4px solid #b91c1c'                  // FSC — thick red stripe
+                          : undefined,
                   opacity: isCombinedChild ? 0.85 : 1,
                   minWidth: 1080,
                 }}
@@ -741,8 +748,16 @@ export default function StudentDetail({
                     </div>
                   )}
                   {!isRepeat && (lesson.sc || lesson.pc) && (
-                    <div className={`tag ${lesson.sc ? 'tag-blue' : 'tag-amber'}`} style={{ marginTop: 2, fontSize: 10 }}>
-                      {lesson.sc ? 'stage' : 'prog'}
+                    <div
+                      className={`tag ${lesson.fsc ? '' : lesson.sc ? 'tag-blue' : 'tag-amber'}`}
+                      style={{
+                        marginTop: 2, fontSize: 10,
+                        // FSC gets its own loud red pill so it can't be
+                        // confused with a regular blue 'stage' badge.
+                        ...(lesson.fsc ? { background: '#b91c1c', color: '#fff', fontWeight: 700 } : null),
+                      }}
+                    >
+                      {lesson.fsc ? 'FINAL' : lesson.sc ? 'stage' : 'prog'}
                     </div>
                   )}
                 </div>
@@ -771,11 +786,11 @@ export default function StudentDetail({
                   const showDiff  = actualFlt > 0 && target > 0
                   return (
                     <>
-                      <div style={{ textAlign: 'right', fontWeight: 500 }}>
+                      <div style={{ textAlign: 'center', fontWeight: 500 }}>
                         {actualFlt > 0 ? actualFlt.toFixed(1) : '—'}
                       </div>
                       <div style={{
-                        textAlign: 'right', fontSize: 11, fontWeight: 600,
+                        textAlign: 'center', paddingLeft: 16, fontSize: 11, fontWeight: 600,
                         color: !showDiff ? '#d1d5db' : diff > 0 ? '#b45309' : diff < 0 ? '#15803d' : '#6b7280',
                       }}>
                         {showDiff ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}` : '—'}
@@ -825,7 +840,19 @@ export default function StudentDetail({
                   {status === 'partial'      && <span className="tag tag-amber">in prog</span>}
                   {status === 'incomplete'   && <span className="tag tag-amber">incomplete</span>}
                   {status === 'unsuccessful' && <span className="tag tag-red">unsuccessful</span>}
-                  {status === 'pending'      && <span className="tag tag-gray">pending</span>}
+                  {status === 'pending'      && (
+                    <span
+                      className="tag"
+                      style={{
+                        background: '#fff',
+                        color: '#6b7280',
+                        border: '1px solid #d1d5db',
+                        fontWeight: 600,
+                      }}
+                    >
+                      pending
+                    </span>
+                  )}
                 </span>
               </div>
             )
@@ -889,15 +916,15 @@ export default function StudentDetail({
                 minWidth: 1080,
               }}>
                 <span>Totals</span>
-                <span style={{ textAlign: 'right' }}>{fmt(targetDual)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(targetSolo)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(targetXC)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(targetInst)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(targetSim)}</span>
-                <span style={{ textAlign: 'right' }}>{parseFloat(course.targetTotal).toFixed(1)}</span>
-                <span style={{ textAlign: 'right' }}>{fmt(totFlown)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(targetDual)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(targetSolo)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(targetXC)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(targetInst)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(targetSim)}</span>
+                <span style={{ textAlign: 'center' }}>{parseFloat(course.targetTotal).toFixed(1)}</span>
+                <span style={{ textAlign: 'center' }}>{fmt(totFlown)}</span>
                 <span style={{
-                  textAlign: 'right',
+                  textAlign: 'center', paddingLeft: 16,
                   color: overUnderTot > 0 ? '#b45309' : overUnderTot < 0 ? '#15803d' : '#6b7280',
                 }}>
                   {anyDiff ? `${overUnderTot > 0 ? '+' : ''}${overUnderTot.toFixed(1)}` : '—'}
@@ -1157,7 +1184,7 @@ function TargetCell({ value, bold = false }) {
   const has = (value || 0) > 0
   return (
     <div style={{
-      textAlign: 'right', fontSize: 12,
+      textAlign: 'center', fontSize: 12,
       color: has ? '#111827' : '#d1d5db',
       fontWeight: bold ? 600 : 400,
     }}>
@@ -1179,14 +1206,14 @@ function LogCell({ logged, rec }) {
   // stacking the same value twice (which read as a UI glitch in feedback).
   if (met) {
     return (
-      <div style={{ textAlign: 'right', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
         {val.toFixed(1)} ✓
       </div>
     )
   }
   const valColor = val === 0 ? '#d1d5db' : (over ? '#dc2626' : '#111827')
   return (
-    <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+    <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
       <div style={{ fontSize: 12, color: valColor, fontWeight: over ? 600 : 400 }}>
         {val > 0 ? val.toFixed(1) : '—'}
       </div>
@@ -1206,7 +1233,7 @@ function TotalCell({ logged, rec }) {
   const hasRec = rec > 0
   const met = hasRec && logged >= rec
   return (
-    <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+    <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
       <div style={{ fontSize: 12 }}>{logged > 0 ? logged.toFixed(1) : '—'}</div>
       {hasRec && (
         <div style={{ fontSize: 9, fontWeight: 600, color: met ? '#16a34a' : '#2d6ab4' }}>
