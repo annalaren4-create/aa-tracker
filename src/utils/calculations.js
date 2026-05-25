@@ -215,11 +215,24 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
     // out of pocket because LU's allowance was exhausted).
     const origLg = sLogs[lesson.id]
     addLessonLog(lesson, origLg, { countCompletion: true, isOop: !!origLg?.paidOop })
-    // Split continuations: subsequent sessions of the SAME lesson. Always
-    // Liberty-funded; hours accumulate toward the lesson total.
+    // Split continuations: subsequent sessions of the SAME lesson. Normally
+    // Liberty-funded, but a split that comes AFTER an OOP repeat inherits the
+    // OOP billing (it's finishing an OOP attempt, e.g. a busted FSC's retry
+    // that ran out of time for weather). Hours accumulate toward the lesson
+    // total either way.
+    const repeatChain = repeatKeysFor(sLogs, lesson.id)
     splitKeysFor(sLogs, lesson.id).forEach((sk) => {
       const slg = sLogs[sk]
-      addLessonLog(lesson, slg, { countCompletion: false, isOop: !!slg?.paidOop })
+      const splitDate = slg?.date
+      const oopRepeatBeforeThisSplit = repeatChain.some((rk, idx) => {
+        const rlg = sLogs[rk]
+        // Only consider repeats dated on or before this split.
+        if (!rlg) return false
+        if (splitDate && rlg.date && rlg.date > splitDate) return false
+        return !!rlg.paidOop || repeatIsOop(lesson, idx)
+      })
+      const isOop = !!slg?.paidOop || oopRepeatBeforeThisSplit
+      addLessonLog(lesson, slg, { countCompletion: false, isOop })
     })
     // Repeat attempts: only the FIRST repeat of the FIRST eligible lesson is
     // Liberty-funded; everything else is OOP. A repeat can also be explicitly

@@ -526,43 +526,46 @@ export default function StudentDetail({
             const myLg = sLogs[lesson.id] || {}
             if (myLg.combinedFrom) return []
             const items = [{ key: lesson.id, isRepeat: false }]
-            // Split continuations come right after the original lesson row,
-            // before any repeats. They're billed as Lib-funded.
-            splitKeysFor(sLogs, lesson.id).forEach((sk) => items.push({ key: sk, isSplit: true }))
-            // If the latest entry was marked "Split — finish later" OR just
-            // Incomplete, spawn the next __sN continuation row. (Incomplete
-            // on any lesson now finishes the leftover time as Liberty-funded,
-            // not as an OOP repeat.)
-            const splitKeys = splitKeysFor(sLogs, lesson.id)
-            const lastSplitKey = splitKeys[splitKeys.length - 1]
-            const lastSplitLg  = lastSplitKey ? sLogs[lastSplitKey] : null
-            const continuingSignal = (lg) => !!(lg?.splitContinuing || lg?.incomplete)
-            const needsNextSplit =
-              (continuingSignal(myLg) && splitKeys.length === 0) ||
-              (continuingSignal(lastSplitLg) && lastSplitKey)
-            if (needsNextSplit) {
-              const usedSplitNums = splitKeys.map((k) => parseInt(k.split('__s')[1], 10) || 0)
-              const nextSplitNum  = (usedSplitNums.length ? Math.max(...usedSplitNums) : 0) + 1
-              const placeholderKey = `${lesson.id}__s${nextSplitNum}`
+            const splitKeys  = splitKeysFor(sLogs, lesson.id)
+            const repeatKeys = repeatKeysFor(sLogs, lesson.id)
+            splitKeys.forEach((sk)  => items.push({ key: sk, isSplit: true }))
+            repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
+
+            // Identify the truly LATEST entry across original + splits + repeats
+            // by date (falling back to insertion order if dates are missing).
+            // Spawn rules:
+            //   • latest has repeatedLib/Oop → spawn next __rN (repeat attempt)
+            //   • latest has incomplete/splitContinuing → spawn next __sN
+            //     (Liberty-funded continuation, or OOP if it inherits from an
+            //     OOP repeat — handled in calcProgress)
+            const allCandidates = [
+              { key: lesson.id, lg: myLg },
+              ...splitKeys.map((k) => ({ key: k, lg: sLogs[k] || {} })),
+              ...repeatKeys.map((k) => ({ key: k, lg: sLogs[k] || {} })),
+            ].filter((c) => c.lg && Object.keys(c.lg).length > 0)
+            const latest = allCandidates.reduce((best, c) => {
+              if (!best) return c
+              const bestD = best.lg.date || ''
+              const cD = c.lg.date || ''
+              return cD >= bestD ? c : best
+            }, null)
+            const latestLg = latest?.lg || {}
+
+            if (latestLg.repeatedLib || latestLg.repeatedOop) {
+              const usedNums = repeatKeys.map((k) => parseInt(k.split('__r')[1], 10) || 0)
+              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
+              const placeholderKey = `${lesson.id}__r${nextNum}`
+              if (!sLogs[placeholderKey]) {
+                items.push({ key: placeholderKey, isRepeat: true, pending: true })
+              }
+            }
+            if (latestLg.splitContinuing || latestLg.incomplete) {
+              const usedNums = splitKeys.map((k) => parseInt(k.split('__s')[1], 10) || 0)
+              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
+              const placeholderKey = `${lesson.id}__s${nextNum}`
               if (!sLogs[placeholderKey]) {
                 items.push({ key: placeholderKey, isSplit: true, pending: true })
               }
-            }
-            const repeatKeys = repeatKeysFor(sLogs, lesson.id)
-            repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
-            const origLg = sLogs[lesson.id] || {}
-            // Find the latest log entry for this lesson chain.
-            const latestKey = repeatKeys.length > 0 ? repeatKeys[repeatKeys.length - 1] : lesson.id
-            const latestLg  = sLogs[latestKey] || {}
-            // Only explicit Repeat flags spawn a __rN repeat row. Incomplete
-            // now spawns a __sN continuation (handled in the split block above)
-            // so the leftover time bills as Liberty-funded, not as a repeat.
-            const latestNeedsFollowup =
-              latestLg.repeatedLib || latestLg.repeatedOop
-            if (latestNeedsFollowup) {
-              const usedNums = repeatKeys.map((k) => parseInt(k.split('__r')[1], 10) || 0)
-              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
-              items.push({ key: `${lesson.id}__r${nextNum}`, isRepeat: true, pending: true })
             }
             return items
           }).map(({ key, isRepeat, isSplit, pending }) => {
@@ -570,16 +573,19 @@ export default function StudentDetail({
             const baseId = key.split('__r')[0].split('__s')[0]
             const lesson = course.lessons.find((l) => l.id === baseId)
             const lg = sLogs[key] || {}
-            // Status pill: "unsuccessful" (busted) gets its own treatment on
-            // stage/progress/final-stage checks; "incomplete" is distinct from
-            // "in prog" (which means partial data but no explicit flag).
+            // Status pill: "unsuccessful" (busted) ONLY applies to a Final
+            // Stage Check marked with repeatedOop. FSC marked with incomplete
+            // (weather/illness) is just a normal incomplete that spawns a
+            // Liberty-funded continuation.
             const lessonDef = lesson  // alias for clarity
-            const isCheckLesson = lessonDef.sc || lessonDef.fsc || lessonDef.pc
+            const fscBusted = lessonDef.fsc && lg.repeatedOop
             const status = lg.completed
               ? 'done'
-              : lg.incomplete
-                ? (isCheckLesson ? 'unsuccessful' : 'incomplete')
-                : Object.keys(lg).length > 0 ? 'partial' : 'pending'
+              : fscBusted
+                ? 'unsuccessful'
+                : lg.incomplete
+                  ? 'incomplete'
+                  : Object.keys(lg).length > 0 ? 'partial' : 'pending'
             const origLg = sLogs[baseId] || {}
             // 0-based index of this repeat (1st repeat = 0, 2nd = 1, ...). We
             // derive it directly from the __rN suffix to avoid any dependency on
@@ -1014,7 +1020,28 @@ export default function StudentDetail({
 
             setLogLesson(null)
           }}
-          onClear={() => { onClearLesson(student.id, viewCourse, logLesson.key); setLogLesson(null) }}
+          onClear={() => {
+            const key = logLesson.key
+            onClearLesson(student.id, viewCourse, key)
+            // If we just cleared a repeat or split row, also strip the
+            // parent's spawn-trigger flags so a placeholder doesn't
+            // immediately re-render the same row.
+            if (key.includes('__r') || key.includes('__s')) {
+              const parentId = key.split('__r')[0].split('__s')[0]
+              const parentLg = sLogs[parentId] || {}
+              const remainingRepeats = repeatKeysFor(sLogs, parentId).filter((k) => k !== key)
+              const remainingSplits  = splitKeysFor(sLogs, parentId).filter((k) => k !== key)
+              if (remainingRepeats.length === 0 && remainingSplits.length === 0) {
+                const cleaned = { ...parentLg }
+                delete cleaned.repeatedLib
+                delete cleaned.repeatedOop
+                delete cleaned.incomplete
+                delete cleaned.splitContinuing
+                onLogFlight(student.id, viewCourse, parentId, cleaned)
+              }
+            }
+            setLogLesson(null)
+          }}
           onClose={() => setLogLesson(null)}
         />
       )}

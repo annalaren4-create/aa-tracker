@@ -277,21 +277,36 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                 additional repeats without leaving the modal flow. */}
             <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
               {(() => {
-                // Stage checks / progress checks / final stage checks have a real
-                // distinction between "Incomplete" (didn't finish the lesson plan)
-                // and "Unsuccessful" (the evaluation criteria weren't met — bust).
-                const isCheckLesson = lesson.sc || lesson.fsc || lesson.pc
-                const failLabel = isCheckLesson ? 'Unsuccessful' : 'Incomplete'
+                // Final Stage Checks get BOTH:
+                //   • Unsuccessful → bust, spawns an OOP repeat (repeatedOop)
+                //   • Incomplete   → weather/illness/etc., spawns a Liberty
+                //                    continuation (incomplete)
+                // Regular stage / progress checks and other lessons just show
+                // "Incomplete" — same Liberty continuation behavior.
+                const isFinalStageCheck = !!lesson.fsc
                 if (isRepeatAttempt) {
-                  return [['completed', 'Completed ✓'], ['incomplete', failLabel]]
+                  if (isFinalStageCheck) {
+                    return [
+                      ['completed',   'Completed ✓'],
+                      ['repeatedOop', 'Unsuccessful'],
+                      ['incomplete',  'Incomplete'],
+                    ]
+                  }
+                  return [['completed', 'Completed ✓'], ['incomplete', 'Incomplete']]
                 }
-                return [
+                const opts = [
                   ['completed',   'Completed ✓', false],
                   ['repeatedLib', 'Repeat (Lib)',
                     lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
-                  ['repeatedOop', 'Repeat (OOP)', false],
-                  ['incomplete',  failLabel, false],
                 ]
+                if (isFinalStageCheck) {
+                  opts.push(['repeatedOop', 'Unsuccessful', false])
+                  opts.push(['incomplete',  'Incomplete',   false])
+                } else {
+                  opts.push(['repeatedOop', 'Repeat (OOP)', false])
+                  opts.push(['incomplete',  'Incomplete',   false])
+                }
+                return opts
               })().map(([k, label, disabled = false]) => (
                 <label
                   key={k}
@@ -343,7 +358,10 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                   {label}
                 </label>
               ))}
-              {isRepeatAttempt && isLastRepeat && (
+              {/* On a Final Stage Check repeat, the Unsuccessful checkbox
+                  already spawns the next __rN OOP repeat row, so showing a
+                  separate "Repeat again" toggle would be redundant. */}
+              {isRepeatAttempt && isLastRepeat && !lesson.fsc && (
                 <label
                   style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}
                   title="When checked, a new repeat row is added after you press Save"
