@@ -5,14 +5,14 @@ export const SEED_INSTRUCTORS = [
   { name: 'Ademola Desalu',    cert: 'CFI',          base: 'KHEF', phone: '408-930-8203',  email: 'abdesalu+cfi@gmail.com' },
   { name: 'Amanda Haney',      cert: 'CFI/CFII',     base: 'KHEF' },
   { name: 'Anna Herrington',   cert: 'CFI/CFII',     base: 'KHEF', phone: '251-802-9070',  email: 'annalaren4@gmail.com' },
-  { name: 'Anthony Wright',    cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, phone: '240-298-1424', email: 'awwsomd@gmail.com' },
+  { name: 'Anthony Wright',    cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, chief: true, phone: '240-298-1424', email: 'awwsomd@gmail.com' },
   { name: 'Basit Bukhari',     cert: 'CFI/CFII',     base: 'KHEF', phone: '+1 571-619-4128', email: 'basitbukhari349@gmail.com' },
-  { name: 'Bob Hepp',          cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, phone: '703-915-0428', email: 'nightowl@aviationadventures.com' },
+  { name: 'Bob Hepp',          cert: 'CFI/CFII/MEI', base: 'KHEF', lineRate: 110, chief: true, phone: '703-915-0428', email: 'nightowl@aviationadventures.com' },
   { name: 'Brandon Hoertsch',  cert: 'CFI',          base: 'KHEF', phone: '916-806-4788',  email: 'Brandonhoertsch@gmail.com' },
   { name: 'Connor Radomski',   cert: 'CFI',          base: 'KHEF', phone: '248-766-1858' },
   { name: 'Daniel Wang',       cert: 'CFI/CFII',     base: 'KHEF', phone: '571-587-6951',  email: 'swang12@liberty.edu' },
   { name: 'David Pagano',      cert: 'CFI/CFII',     base: 'KHEF', phone: '330-719-3172' },
-  { name: 'Elias Kontanis',    cert: 'CFI',          base: 'KHEF', lineRate: 110, phone: '540-935-1890', email: 'kontanis@gmail.com' },
+  { name: 'Elias Kontanis',    cert: 'CFI',          base: 'KHEF', lineRate: 110, chief: true, phone: '540-935-1890', email: 'kontanis@gmail.com' },
   { name: 'Grant Luisi',       cert: 'CFI/CFII',     base: 'KHEF', email: 'grluisi4@gmail.com' },
   { name: 'Julissa Lambert',   cert: 'CFI',          base: 'KHEF' },
   { name: 'Mark Witte',        cert: 'CFI/CFII/MEI', base: 'KHEF', phone: '703-599-1782',  email: 'wittem@gmail.com' },
@@ -26,26 +26,26 @@ export const SEED_INSTRUCTORS = [
   { name: 'Zachary Fata',      cert: 'CFI',          base: 'KHEF', phone: '+1 703-909-8634', email: 'zackfata33@gmail.com' },
 
   // ── KRMN (Stafford) ────────────────────────────────────────────────
-  { name: 'John Knapp',        cert: 'CFI',          base: 'KRMN', lineRate: 110, phone: '540-604-6088', email: 'jknapp@aviationadventures.com' },
+  { name: 'John Knapp',        cert: 'CFI',          base: 'KRMN', lineRate: 110, chief: true, phone: '540-604-6088', email: 'jknapp@aviationadventures.com' },
   { name: 'Kevin Boyd',        cert: 'CFI',          base: 'KRMN', phone: '845-270-9264',  email: 'kevinboyd426@icloud.com' },
-  { name: 'Kim Webster',       cert: 'CFI',          base: 'KRMN', lineRate: 110 },
+  { name: 'Kim Webster',       cert: 'CFI',          base: 'KRMN', lineRate: 110, chief: true },
   { name: 'Logan Snellings',   cert: 'CFI',          base: 'KRMN', phone: '540-846-8836',  email: 'LSnellings02@gmail.com' },
   { name: 'Wynn Martin',       cert: 'CFI',          base: 'KRMN', phone: '540-699-9557',  email: 'wyngarmar@gmail.com' },
 
   // ── KHWY (Warrenton) ───────────────────────────────────────────────
   { name: 'Jacob Davis',       cert: 'CFI',          base: 'KHWY', phone: '618-560-9627',  email: 'jwdaviswork105@gmail.com' },
-  { name: 'John Knapp',        cert: 'CFI',          base: 'KHWY', lineRate: 110, phone: '540-604-6088', email: 'jknapp@aviationadventures.com' },
+  { name: 'John Knapp',        cert: 'CFI',          base: 'KHWY', lineRate: 110, chief: true, phone: '540-604-6088', email: 'jknapp@aviationadventures.com' },
   { name: 'Roger Coffman',     cert: 'CFI',          base: 'KHWY', phone: '571-220-2009',  email: 'talon@aviationadventures.com' },
 
   // ── KOKV (Winchester) ──────────────────────────────────────────────
   { name: 'Andrew Elwood',     cert: 'CFI',          base: 'KOKV', email: 'b44i@yahoo.com' },
-  { name: 'Brenda Gillespie',  cert: 'CFI',          base: 'KOKV', lineRate: 110, phone: '703-727-4975', email: 'brendygarcia2@outlook.com' },
+  { name: 'Brenda Gillespie',  cert: 'CFI',          base: 'KOKV', lineRate: 110, chief: true, phone: '703-727-4975', email: 'brendygarcia2@outlook.com' },
   { name: 'Cody Crittenden',   cert: 'CFI',          base: 'KOKV', phone: '540-931-3845',  email: 'cdcrittenden03@gmail.com' },
   { name: 'Logan Campbell',    cert: 'CFI',          base: 'KOKV', phone: '304-240-2718',  email: 'logan2212@outlook.com' },
   { name: 'Zahl Azizi',        cert: 'CFI',          base: 'KOKV' },
 
   // ── KJYO (Leesburg) ────────────────────────────────────────────────
-  { name: 'Bill English',      cert: 'CFI',          base: 'KJYO', lineRate: 110, phone: '703-447-5598', email: 'bill_english@verizon.net' },
+  { name: 'Bill English',      cert: 'CFI',          base: 'KJYO', lineRate: 110, chief: true, phone: '703-447-5598', email: 'bill_english@verizon.net' },
   { name: 'Bradley Shipley',   cert: 'CFI',          base: 'KJYO', phone: '443-289-6646' },
   { name: 'Christopher Miller',cert: 'CFI',          base: 'KJYO', phone: '575-636-4231',  email: 'vjsmedlo@verizon.net' },
   { name: 'Connor Wilson',     cert: 'CFI',          base: 'KJYO', phone: '301-412-1841',  email: 'c.b.wilson1996@gmail.com' },

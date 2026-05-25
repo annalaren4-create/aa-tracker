@@ -63,11 +63,31 @@ export default function Register({ students, instructors = [], calcProgress, onA
   const rosterMatches = instructors.filter((i) => eqName(i.name, name))
 
   function handleRoleSelect(r, rl) {
-    // Chief / Assistant Chief is gated by an invite code so randoms can't
-    // grant themselves management access just by picking the tile. The
-    // code lives in src/data/constants.js (CHIEF_ACCESS_CODE) and should
-    // be shared privately with new chiefs.
-    if (r === 'chief') {
+    // Roster-verified chief flag (e.g. Brenda Gillespie has chief:true on
+    // her instructor record). Used to (a) auto-suggest the right role if
+    // she clicks Instructor, and (b) skip the invite-code prompt since
+    // the roster already proves she's a chief.
+    const rosterChiefMatch = instructors.find((i) => i.chief && eqName(i.name, name))
+
+    // Wrong tile catch — if she meant chief but tapped instructor.
+    if (r === 'instructor' && rosterChiefMatch) {
+      const fix = window.confirm(
+        `${rosterChiefMatch.name} is listed as a Chief / Assistant Chief Instructor on the roster.\n\n` +
+        `Register as Chief instead?\n\n` +
+        `OK = switch to Chief\nCancel = stay as Instructor`
+      )
+      if (fix) {
+        r = 'chief'
+        rl = 'Chief / Assistant Chief Instructor'
+      }
+    }
+
+    // Chief / Assistant Chief is normally gated by an invite code so
+    // randoms can't grant themselves management access. EXCEPTION: if
+    // the typed name matches a roster entry that is already flagged as
+    // a chief, we trust the roster and skip the code. The code only
+    // exists to protect against people NOT on the chief list.
+    if (r === 'chief' && !rosterChiefMatch) {
       const entered = window.prompt('Chief Instructor access is restricted.\n\nEnter the chief invite code to continue:')
       if (entered === null) return                                   // cancelled
       if (entered.trim() !== CHIEF_ACCESS_CODE) {
