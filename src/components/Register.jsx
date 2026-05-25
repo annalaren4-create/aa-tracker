@@ -121,7 +121,18 @@ export default function Register({ students, instructors = [], calcProgress, onA
     <div>
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn btn-sm btn-ghost" onClick={step === 1 ? onBack : () => setStep(step - 1)}>← Back</button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => {
+              // Role-aware back navigation — the forward flow skips step 3
+              // (student-record lookup) for non-student roles, so Back from
+              // step 4 has to skip it the same way going backwards.
+              if (step === 1) { onBack(); return }
+              if (step === 3 && createMode) { setCreateMode(false); return }
+              if (step === 4) { setStep(role === 'student' ? 3 : 2); return }
+              setStep(step - 1)
+            }}
+          >← Back</button>
           <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
           <h1>Create Account</h1>
         </div>
