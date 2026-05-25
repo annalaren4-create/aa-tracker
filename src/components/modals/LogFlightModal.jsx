@@ -78,10 +78,26 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   const matchesRoster = instructors.some((i) => eqName(i.name, rawInitialInstructor))
   const [customInstr, setCustomInstr] = useState(!!rawInitialInstructor && !matchesRoster)
   const [repeatAgainChecked, setRepeatAgainChecked] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const hasInstructors = instructors.length > 0
 
   const save = () => {
+    // Require the instructor to actively pick a status — Completed, Incomplete,
+    // Repeat (Lib/OOP), Unsuccessful, or Split. Without this guard a half-
+    // filled log can be saved as a perpetually "in progress" entry with no
+    // clear next action.
+    const hasStatus = !!(
+      form.completed || form.incomplete ||
+      form.repeatedLib || form.repeatedOop ||
+      (splitChecked && lesson.splittable)
+    )
+    if (!hasStatus) {
+      setSaveErr('Pick a status (Completed, Incomplete, Repeat, Unsuccessful, or Split) before saving.')
+      return
+    }
+    setSaveErr('')
+
     const flight = parseFloat(form.flight) || 0
     const ground = parseFloat(form.ground) || 0
 
@@ -457,6 +473,11 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
           </div>
         </div>
 
+        {saveErr && (
+          <div style={{ padding: '8px 16px', background: '#fef2f2', color: '#b91c1c', fontSize: 12, fontWeight: 600, borderTop: '1px solid #fecaca' }}>
+            {saveErr}
+          </div>
+        )}
         <div className="modal-footer">
           {/* Latest repeat: always offer a "Remove this repeat" button so the
               instructor can cancel an unwanted repeat row even if it has no data
