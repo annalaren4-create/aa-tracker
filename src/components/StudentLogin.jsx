@@ -45,7 +45,6 @@ export default function StudentLogin({ students, calcProgress, onLogin, onBack }
 
         {search.trim().length > 0 && results.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '32px 20px', color: '#6b7280' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}></div>
             <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>No student found</p>
             <p style={{ fontSize: 13 }}>Ask your instructor to add your profile to the system.</p>
           </div>

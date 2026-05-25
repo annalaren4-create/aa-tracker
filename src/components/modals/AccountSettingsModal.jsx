@@ -60,17 +60,19 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
         </div>
 
         <div className="modal-body">
-          {/* Tab switcher */}
+          {/* Tab switcher — clears both forms' success/error banners on
+              switch so a stale "Updated." or error message from the other
+              form doesn't haunt the new tab. */}
           <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: 16 }}>
             <button
               className={`tab ${tab === 'username' ? 'active' : ''}`}
-              onClick={() => setTab('username')}
+              onClick={() => { setTab('username'); setUsernameErr(''); setUsernameOk(''); setPwErr(''); setPwOk('') }}
             >
               Change username
             </button>
             <button
               className={`tab ${tab === 'password' ? 'active' : ''}`}
-              onClick={() => setTab('password')}
+              onClick={() => { setTab('password'); setUsernameErr(''); setUsernameOk(''); setPwErr(''); setPwOk('') }}
             >
               Change password
             </button>

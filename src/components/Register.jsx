@@ -342,7 +342,7 @@ export default function Register({ students, instructors = [], calcProgress, onA
               <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
                 {rosterMatches.map((ins) => (
                   <div
-                    key={ins.id || ins.name}
+                    key={ins.id || `${ins.name}-${ins.base || ''}`}
                     onClick={() => handleConfirmInstructor(ins)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
