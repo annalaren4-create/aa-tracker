@@ -122,7 +122,7 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
             {/* LU info box */}
             {form.school === 'Liberty University' && (
               <div className="info-box">
-                💵&nbsp;
+               &nbsp;
                 <b>LU flat rate: ${(LU_FLAT_RATES[form.course] || 0).toLocaleString()}</b>
                 {' · '}{COURSES[form.course]?.avia}
                 {' · '}Aircraft ${AIRCRAFT_RATES[form.aircraft] || 0}/hr

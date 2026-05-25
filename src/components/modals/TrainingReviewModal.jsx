@@ -111,7 +111,7 @@ export default function TrainingReviewModal({ student, logs, oopLessons, policyV
 
         <div className="modal-footer no-print">
           <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn btn-primary" onClick={() => window.print()}>🖨 Print</button>
+          <button className="btn btn-primary" onClick={() => window.print()}>Print</button>
         </div>
       </div>
     </div>

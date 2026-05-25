@@ -21,7 +21,6 @@ export default function StudentPortal({ students, calcProgress, onSelectStudent,
 
       <div style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>
         <div style={{ position: 'relative', marginBottom: 14 }}>
-          <span style={{ position: 'absolute', left: 10, top: 8, color: '#9ca3af' }}>🔍</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}

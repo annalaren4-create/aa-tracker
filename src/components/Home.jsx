@@ -39,7 +39,7 @@ export default function Home({ onSignIn, onRegister }) {
         </div>
 
         <div className="info-box" style={{ marginTop: 24, textAlign: 'center' }}>
-          New to the system? Click <strong>Create account</strong> to get started.
+          New to the system? Click Create account to get started.
         </div>
       </div>
     </div>

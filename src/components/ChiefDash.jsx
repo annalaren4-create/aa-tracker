@@ -137,7 +137,7 @@ export default function ChiefDash({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>👥 Instructors</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>Instructors</button>
           <button
             className="btn btn-sm"
             style={{ background: '#2d6ab4', color: '#fff', border: 'none' }}
@@ -197,7 +197,6 @@ export default function ChiefDash({
       <div style={{ padding: '6px 16px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
         <div style={{ maxWidth: 1300, margin: '0 auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
-            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 12, pointerEvents: 'none' }}>🔍</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -223,7 +222,6 @@ export default function ChiefDash({
       <div style={{ maxWidth: 1300, margin: '0 auto', padding: '6px 16px 32px' }}>
         {visibleStudents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 48, color: '#6b7280' }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>👥</div>
             <p>{students.length === 0 ? 'No students yet — add the first one!' : 'No students match your filters'}</p>
             {students.length === 0 && (
               <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setShowAdd(true)}>

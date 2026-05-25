@@ -34,7 +34,6 @@ export default function InstructorLogin({ onSuccess, onBack }) {
       <div style={{ padding: '60px 20px', maxWidth: 400, margin: '0 auto' }}>
         <div className="card" style={{ padding: '32px 28px' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <span style={{ fontSize: 48 }}>🧑‍✈️</span>
             <h2 style={{ marginTop: 10, fontSize: 20, fontWeight: 600 }}>Instructor Sign In</h2>
             <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
               Aviation Adventures Flight School

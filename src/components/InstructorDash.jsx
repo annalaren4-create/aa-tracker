@@ -37,7 +37,7 @@ export default function InstructorDash({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>
-            👥 Instructors
+            Instructors
           </button>
           <button
             className="btn btn-sm"
@@ -71,7 +71,6 @@ export default function InstructorDash({
       <div style={{ padding: 16, maxWidth: 900, margin: '0 auto' }}>
         {locationStudents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
             <p>No students at {activeLocation} yet</p>
             <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setShowAdd(true)}>
               Add first student

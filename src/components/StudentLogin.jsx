@@ -21,7 +21,6 @@ export default function StudentLogin({ students, calcProgress, onLogin, onBack }
 
       <div style={{ padding: '40px 20px', maxWidth: 520, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <span style={{ fontSize: 48 }}>📋</span>
           <h2 style={{ marginTop: 10, fontSize: 20, fontWeight: 600 }}>Find Your Record</h2>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
             Type your name to view your progress and syllabus
@@ -29,7 +28,6 @@ export default function StudentLogin({ students, calcProgress, onLogin, onBack }
         </div>
 
         <div style={{ position: 'relative', marginBottom: 16 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }}>🔍</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -47,7 +45,7 @@ export default function StudentLogin({ students, calcProgress, onLogin, onBack }
 
         {search.trim().length > 0 && results.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '32px 20px', color: '#6b7280' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>✈️</div>
+            <div style={{ fontSize: 32, marginBottom: 8 }}></div>
             <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>No student found</p>
             <p style={{ fontSize: 13 }}>Ask your instructor to add your profile to the system.</p>
           </div>

@@ -341,8 +341,8 @@ export default function ManageInstructorsModal({
                             </div>
                             {(ins.phone || ins.email) && (
                               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                                {ins.phone && <span>📞 <a href={`tel:${ins.phone}`} style={{ color: '#6b7280' }}>{ins.phone}</a></span>}
-                                {ins.email && <span>✉ <a href={`mailto:${ins.email}`} style={{ color: '#6b7280' }}>{ins.email}</a></span>}
+                                {ins.phone && <span><a href={`tel:${ins.phone}`} style={{ color: '#6b7280' }}>{ins.phone}</a></span>}
+                                {ins.email && <span><a href={`mailto:${ins.email}`} style={{ color: '#6b7280' }}>{ins.email}</a></span>}
                               </div>
                             )}
                           </div>

@@ -13,10 +13,9 @@ function defaultAircraft(course) {
 }
 
 const ROLE_OPTIONS = [
-  { role: 'student',    roleLabel: 'Student',                    icon: '📋', desc: 'View your course progress and syllabus' },
-  { role: 'instructor', roleLabel: 'Instructor',                 icon: '🧑‍✈️', desc: 'Manage students and log flight time' },
-  { role: 'chief',      roleLabel: 'Chief Instructor',           icon: '⭐', desc: 'Sets policy, manages instructor roster, approves Chief / Stage Check designations' },
-  { role: 'chief',      roleLabel: 'Assistant Chief Instructor', icon: '🌟', desc: 'Same dashboard access as Chief — helps run day-to-day operations at a specific base' },
+  { role: 'student',    roleLabel: 'Student',                            desc: 'View your course progress and syllabus' },
+  { role: 'instructor', roleLabel: 'Instructor',                         desc: 'Manage students and log flight time' },
+  { role: 'chief',      roleLabel: 'Chief / Assistant Chief Instructor', desc: 'Sets policy, manages instructor roster, approves Chief / Stage Check designations' },
 ]
 
 export default function Register({ students, instructors = [], calcProgress, onAddStudent, onSuccess, onBack }) {
@@ -156,7 +155,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
           {step === 1 && (
             <form onSubmit={handleNameNext}>
               <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <span style={{ fontSize: 40 }}>👤</span>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>What is your name?</h2>
                 <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Enter your full name as it appears in the system</p>
               </div>
@@ -180,7 +178,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
           {step === 2 && (
             <div>
               <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <span style={{ fontSize: 40 }}>🎓</span>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>What is your role?</h2>
                 <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Hi <strong>{name}</strong> — select your role to continue</p>
               </div>
@@ -197,7 +194,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1a3a5c'; e.currentTarget.style.background = '#f8fafc' }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = '' }}
                   >
-                    <span style={{ fontSize: 28, flexShrink: 0 }}>{opt.icon}</span>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{opt.roleLabel}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{opt.desc}</div>
@@ -213,7 +209,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
           {step === 3 && !createMode && (
             <div>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <span style={{ fontSize: 40 }}>🔍</span>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Find your student record</h2>
                 <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>If your instructor already added you, search below</p>
               </div>
@@ -276,7 +271,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
           {step === 3 && createMode && (
             <form onSubmit={handleCreateProfile}>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <span style={{ fontSize: 40 }}>✈️</span>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Tell us about your training</h2>
                 <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
                   Hi <strong>{name}</strong> — a few quick details and we'll set up your profile
@@ -361,7 +355,6 @@ export default function Register({ students, instructors = [], calcProgress, onA
           {step === 4 && (
             <form onSubmit={handleSubmit}>
               <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <span style={{ fontSize: 40 }}>🔐</span>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Create your login</h2>
                 {studentRecord && (
                   <div style={{ marginTop: 8, padding: '6px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#15803d', display: 'inline-block' }}>

@@ -131,7 +131,7 @@ export default function StudentDetail({
       <div className="header no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className="btn btn-sm btn-ghost" onClick={onBack}>← Back</button>
-          <button className="btn btn-sm btn-ghost" onClick={() => window.print()}>🖨 Print</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => window.print()}>Print</button>
           <div>
             <h1>{student.name}</h1>
             <small>
@@ -1097,12 +1097,12 @@ function InstructorContact({ label, ins }) {
         <div style={{ fontSize: 12, color: '#374151', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {ins.phone && (
             <a href={`tel:${ins.phone.replace(/[^\d+]/g, '')}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
-              📞 {ins.phone}
+              {ins.phone}
             </a>
           )}
           {ins.email && (
             <a href={`mailto:${ins.email}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
-              ✉ {ins.email}
+              {ins.email}
             </a>
           )}
         </div>
