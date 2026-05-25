@@ -248,6 +248,27 @@ export const COURSE_NAMES = Object.keys(COURSES)
 export const COURSE_VERSIONS = {
   // Private 2 before Spring 2026 merge of 6.1 and 6.2 into a single lesson.
   // Last-semester students (e.g. Gwen Pinto) trained against this version.
+  // Commercial 1 before Spring 2026 — lesson 3.4 was 5.0 hr (now 6.0).
+  // Adam Medina's historical Commercial 1 trained against this version.
+  'Commercial 1:pre-2026-spring': {
+    avia: 'AVIA325',
+    targetTotal: 41.0,
+    lessons: [
+      { id: '1.1', d: 3.0, x: 3.0, i: 0.5, g: 0.7, t: 3.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >100nm, Normal landing' },
+      { id: '1.2', d: 1.0, i: 0.2, n: 1.0, g: 0.7, t: 1.0, o: 'Night TO/L\'s in pattern with/without landing light' },
+      { id: '1.3', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, VOR/GPS, track V airway, one landing >100nm' },
+      { id: '1.4', d: 4.0, x: 4.0, i: 0.7, n: 4.0, g: 0.7, t: 4.0, o: 'Night Pilotage/Dead reck, VOR/GPS, one landing >100nm, Go-around' },
+      { id: '1.5', s: 1.5, n: 1.5, t: 1.5, o: 'Solo night TO/L\'s in the pattern' },
+      { id: '2.1', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >100nm, Normal' },
+      { id: '2.2', s: 1.5, n: 1.5, t: 1.5, o: 'Solo night TO/L\'s in the pattern' },
+      { id: '2.3', s: 4.0, x: 4.0, n: 4.0, t: 4.0, o: 'Pilotage/Dead reck, VOR/GPS, land at 3 points with one >250nm straight line' },
+      { id: '2.4', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >100nm, po 180, Normal' },
+      { id: '2A', d: 3.0, x: 3.0, i: 0.4, g: 0.7, t: 3.0, pc: true, o: 'Prog Check: Pilotage/Dead reck, VOR/GPS, unusual att, lost/divert, >100nm' },
+      { id: '3.1', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >100nm, po 180, Short/soft' },
+      { id: '3.4', s: 5.0, x: 5.0, t: 5.0, o: 'Pilotage/Dead reck, VOR/GPS, one landing >250nm (at least 3 points), Short/soft' },
+      { id: '3A', d: 2.0, x: 2.0, i: 0.5, g: 0.7, t: 2.0, sc: true, pc: true, o: 'Prog Check: Pilotage/Dead reck, VOR/GPS, unusual att, lost/divert, >50nm, Short/soft' },
+    ],
+  },
   'Private 2:pre-2026-spring': {
     avia: 'AVIA225',
     targetTotal: 28.7,

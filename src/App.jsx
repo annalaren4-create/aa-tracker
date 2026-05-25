@@ -51,6 +51,18 @@ export default function App() {
           ),
         }
       }
+      // Backfill the older syllabus version on Adam's Commercial 1 (where
+      // lesson 3.4 was 5.0 hr instead of the current 6.0).
+      if (s.id === 'seed-09' && s.courseHistory?.some((h) => h.course === 'Commercial 1' && !h.syllabusVersion)) {
+        return {
+          ...s,
+          courseHistory: s.courseHistory.map((h) =>
+            h.course === 'Commercial 1' && !h.syllabusVersion
+              ? { ...h, syllabusVersion: 'pre-2026-spring' }
+              : h
+          ),
+        }
+      }
       // One-time: seed Gwen Pinto's Private 2 from last semester (primary Anna
       // Herrington). Uses the pre-2026-spring syllabus version (6.1 and 6.2 as
       // separate lessons) since that's what she trained against.
