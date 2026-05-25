@@ -38,7 +38,7 @@ export default function ChiefDash({
   onAddInstructor, onDeleteInstructor, onUpdateInstructor,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
   calcProgress, onSignOut,
-  account, onUpdateAccount,
+  onUpdateAccount,
 }) {
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
