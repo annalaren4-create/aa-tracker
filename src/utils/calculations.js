@@ -135,7 +135,13 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
 
   // `cost` = Liberty-billed cost (counts toward LU flat-rate balance).
   // `oopCost` = student's out-of-pocket charges (do NOT count toward LU balance).
+  // `costAtPrimaryRate` = what `cost` would be if every logged hour used the
+  // primary instructor's rate (the same assumption the projection uses for
+  // remaining lessons). `cost - costAtPrimaryRate` = the instructor-premium
+  // surcharge baked into the LU projection from flying with higher-rate
+  // instructors (e.g. chiefs at $110 instead of line at $100).
   let flown = 0, cost = enrollmentFee, oopCost = 0, completed = 0
+  let costAtPrimaryRate = enrollmentFee
 
   // How many funded repeats Liberty allows for this course. Defaults to the
   // current policy (LU_FUNDED_REPEATS_PER_COURSE = 1) but historical course
@@ -202,6 +208,26 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
     )
     if (isOop) oopCost += lc
     else       cost    += lc
+    // Parallel cost at the primary instructor's rate (matches projection
+    // assumption). Only tracked for LU-billed rows so the delta represents the
+    // bump to the LU projection — not OOP.
+    if (!isOop) {
+      const { cost: lcPrimary } = lessonCost(
+        lesson,
+        lg.dual   || 0,
+        lg.solo   || 0,
+        lg.sim    || 0,
+        lg.ground || 0,
+        logAircraftRate,
+        student,
+        chargeSimDevice,
+        rateOverrides,
+        primaryLineRate,            // <-- use primary's rate, not the logged instructor's
+        standardAircraftRate,
+        effectiveDiscount,
+      )
+      costAtPrimaryRate += lcPrimary
+    }
     // Aircraft surcharge (S model vs L/P, etc.) is always OOP — even on a
     // Liberty-covered first attempt — because LU only funds the standard rate.
     oopCost += oopAircraftSurcharge
@@ -269,10 +295,19 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   // "With repeat allowance" projection — mirrors the official syllabus assumption
   // that most students will use Liberty's one funded repeat. Adds the cost of a
   // typical extra lesson (2.0 hr dual + 0.7 hr ground at the student's rates).
+  //
+  // Crucially: don't double-count. If the student has already used all of
+  // Liberty's funded repeats (`libFundedRepeatIds`), no further LU-funded
+  // repeat is possible. Whether to still budget for ANOTHER (OOP) repeat is a
+  // judgement call — we just drop the buffer to zero so the "w/ repeat" line
+  // reflects reality. UI can hide the line when the buffer is zero.
+  const repeatsRemaining = Math.max(0, libRepeatsAllowed - libFundedRepeatIds.length)
   const bufferLesson = { d: 2.0, g: 0.7 }
-  const { luCost: bufferLu, oopCost: bufferOop } = lessonExpectedCost(
-    bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount
-  )
+  const { luCost: bufferLu, oopCost: bufferOop } = repeatsRemaining > 0
+    ? lessonExpectedCost(
+        bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount
+      )
+    : { luCost: 0, oopCost: 0 }
   const projectedWithRepeat = Math.round(cost + remainingLuCost + bufferLu + bufferOop)
 
   // Projected aircraft-surcharge OOP from staying on the current (pricier)
@@ -291,6 +326,14 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
     projectedAircraftOop,                    // forward-looking OOP from aircraft choice
     projectedWithRepeat,
     repeatBufferCost: Math.round(bufferLu + bufferOop),
+    // Exposed so the UI can hide the "w/ repeat" line once Liberty's repeat
+    // allowance is already used up (no meaningful "what if" left to show).
+    repeatsRemaining,
+    // Positive number = how much of the current LU cost (and therefore the LU
+    // projection) is the result of flying with higher-rate instructors than the
+    // primary. Lets the UI explain "↑ $X from chief rate" rather than leaving
+    // chiefs as a silent source of projection growth.
+    instructorPremium: Math.max(0, Math.round(cost - costAtPrimaryRate)),
     completed,
     total,
     flatRate,

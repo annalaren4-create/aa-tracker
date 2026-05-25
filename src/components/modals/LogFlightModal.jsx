@@ -39,10 +39,25 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   // Pre-fill the flight inputs from any existing log
   const existingFlight = (existing.dual || 0) + (existing.solo || 0) + (existing.sim || 0)
 
+  // If the prefilled instructor matches a roster entry under a different
+  // casing/spacing (e.g. logged-in as "anna herrington" but roster says "Anna
+  // Herrington"), snap to the canonical roster spelling so the <select>
+  // actually highlights the matching <option> instead of falling back to the
+  // "— select instructor —" placeholder.
+  const rawInitialInstructor = existing.instructor || defaultInstructor || ''
+  const canonicalInstructor = rawInitialInstructor
+    ? (instructors.find((i) => eqName(i.name, rawInitialInstructor))?.name || rawInitialInstructor)
+    : ''
+
   const [form, setForm] = useState({
     date:        existing.date        || new Date().toISOString().slice(0, 10),
-    instructor:  existing.instructor  || defaultInstructor || '',
-    aircraft:    existing.aircraft    || defaultAircraft   || '',
+    instructor:  canonicalInstructor,
+    // Sim-only lessons (Redbird-only — no dual/solo flight time) ALWAYS open
+    // with Redbird FMX, even when re-opening an older log that was previously
+    // saved with the student's default airplane — instructors have to actively
+    // pick LD/SD (or any other device) to override. Non-sim lessons fall back
+    // to the existing saved aircraft, then the student's default.
+    aircraft:    isSimOnly ? 'Redbird FMX' : (existing.aircraft || defaultAircraft || ''),
     // For mixed (dual + solo) lessons we collect Dual and Solo separately so the
     // instructor records what actually happened, not a proportional split.
     flight:      existingFlight > 0 && !isMixed ? existingFlight.toString() : '',
@@ -60,9 +75,8 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   // logged-in user registered as a name that isn't on the instructor list yet),
   // start in custom-text mode with their name already typed instead of showing
   // an empty "— select instructor —" dropdown.
-  const initialInstructorName = existing.instructor || defaultInstructor || ''
-  const matchesRoster = instructors.some((i) => eqName(i.name, initialInstructorName))
-  const [customInstr, setCustomInstr] = useState(!!initialInstructorName && !matchesRoster)
+  const matchesRoster = instructors.some((i) => eqName(i.name, rawInitialInstructor))
+  const [customInstr, setCustomInstr] = useState(!!rawInitialInstructor && !matchesRoster)
   const [repeatAgainChecked, setRepeatAgainChecked] = useState(false)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const hasInstructors = instructors.length > 0

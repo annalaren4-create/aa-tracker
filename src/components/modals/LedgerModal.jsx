@@ -1,5 +1,5 @@
 import { COURSES, getCourseDef, syllabusVersionFor } from '../../data/courses'
-import { AIRCRAFT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, LU_FLAT_RATES, LU_STANDARD_AIRCRAFT, instrRate } from '../../data/constants'
+import { AIRCRAFT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, LU_FLAT_RATES, LU_STANDARD_AIRCRAFT, LU_FUNDED_REPEATS_PER_COURSE, instrRate } from '../../data/constants'
 import { repeatKeysFor } from '../../utils/calculations'
 
 /**
@@ -18,10 +18,34 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
   const rateByName = {}
   instructors.forEach((i) => { if (i.lineRate) rateByName[i.name] = i.lineRate })
 
+  // Mirror calcProgress's OOP repeat policy so the balance ledger only deducts
+  // from Liberty when LU actually pays. Only the first N repeats (per course
+  // policy) on non-stagecheck lessons are LU-funded; everything else is OOP.
+  const histEntry = student.courseHistory?.find((h) => h.course === activeCourse)
+  const libRepeatsAllowed = histEntry?.libRepeatsAllowed ?? LU_FUNDED_REPEATS_PER_COURSE
+  const libFundedRepeatIds = []
+  if (course) {
+    for (const lesson of course.lessons) {
+      if (libFundedRepeatIds.length >= libRepeatsAllowed) break
+      const lg = sLogs[lesson.id]
+      if (lg?.repeatedLib && !lesson.sc && !lesson.fsc && !lesson.pc) {
+        libFundedRepeatIds.push(lesson.id)
+      }
+    }
+  }
+  const repeatIsOop = (lesson, repeatIndex) => {
+    const parent = sLogs[lesson.id] || {}
+    if (parent.repeatedOop) return true
+    if (parent.repeatedLib && (lesson.sc || lesson.fsc || lesson.pc)) return true
+    if (parent.repeatedLib && !libFundedRepeatIds.includes(lesson.id)) return true
+    if (parent.repeatedLib && repeatIndex > 0) return true   // 2nd+ repeat → OOP
+    return false
+  }
+
   // Flatten every log entry (original + repeats) into a sortable list.
   const rows = []
   course?.lessons.forEach((lesson) => {
-    const add = (key, lg, repeatIdx) => {
+    const add = (key, lg, repeatIdx, isOop) => {
       if (!lg) return
       if (!lg.date && !lg.dual && !lg.solo && !lg.sim && !lg.ground && !lg.completed) return
       const ir = lg.instructor
@@ -68,6 +92,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
         instructor: ir || '—',
         aircraft: aircraftUsed || '—',
         repeatIdx,
+        isOop: !!isOop,
         dual, solo, sim, ground,
         aircraftCost, aircraftSurcharge, instructorCost, simDeviceCost, groundCost,
         luLessonCost, totalCost,
@@ -77,8 +102,12 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
         objectives: lesson.o,
       })
     }
-    add(lesson.id, sLogs[lesson.id], null)
-    repeatKeysFor(sLogs, lesson.id).forEach((rk, idx) => add(rk, sLogs[rk], idx))
+    const origLg = sLogs[lesson.id]
+    add(lesson.id, origLg, null, !!origLg?.paidOop)
+    repeatKeysFor(sLogs, lesson.id).forEach((rk, idx) => {
+      const rlg = sLogs[rk]
+      add(rk, rlg, idx, !!rlg?.paidOop || repeatIsOop(lesson, idx))
+    })
   })
   // Sort chronologically — undated entries float to the bottom.
   rows.sort((a, b) => {
@@ -157,9 +186,10 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                 {rows.map((r) => {
                   // Running cost and Balance only reflect what LU is billed
                   // (i.e. excluding the OOP aircraft surcharge — that lives in
-                  // its own column).
-                  if (mode === 'cost') running += r.luLessonCost
-                  if (mode === 'balance') running -= r.luLessonCost
+                  // its own column — AND skipping rows the student paid OOP,
+                  // like 2nd+ repeats or stage-check repeats that LU doesn't fund).
+                  if (mode === 'cost' && !r.isOop) running += r.luLessonCost
+                  if (mode === 'balance' && !r.isOop) running -= r.luLessonCost
                   return (
                     <tr key={r.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={td}>{r.date || '—'}</td>
@@ -167,6 +197,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                         {r.repeatIdx !== null ? <span style={{ color: '#dc2626' }}>↻ </span> : null}
                         {r.lessonId}
                         {r.repeatIdx !== null && <span style={{ color: '#9ca3af', fontSize: 10 }}> (repeat {r.repeatIdx + 1})</span>}
+                        {r.isOop && <span className="tag tag-amber" style={{ marginLeft: 6, fontSize: 9 }}>OOP</span>}
                       </td>
                       <td style={{ ...td, fontSize: 11, color: r.aircraftSurcharge > 0 ? '#b45309' : '#374151' }}>{r.aircraft}</td>
                       <td style={td}>{r.instructor}</td>
@@ -178,14 +209,27 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                         <td style={{ ...tdRight, fontWeight: 600 }}>{r.totalHours > 0 ? r.totalHours.toFixed(1) : '—'}</td>
                       </>)}
                       {mode !== 'hours' && (<>
-                        <td style={tdRight}>{r.aircraftCost > 0 ? `$${r.aircraftCost.toFixed(0)}` : '—'}</td>
-                        <td style={tdRight}>{r.instructorCost > 0 ? `$${r.instructorCost.toFixed(0)}` : '—'}</td>
-                        <td style={tdRight}>{r.simDeviceCost > 0 ? `$${r.simDeviceCost.toFixed(0)}` : '—'}</td>
-                        <td style={tdRight}>{r.groundCost > 0 ? `$${r.groundCost.toFixed(0)}` : '—'}</td>
-                        <td style={{ ...tdRight, color: r.aircraftSurcharge > 0 ? '#b45309' : '#d1d5db', fontWeight: r.aircraftSurcharge > 0 ? 600 : 400 }}>
-                          {r.aircraftSurcharge > 0 ? `+$${r.aircraftSurcharge.toFixed(0)}` : '—'}
-                        </td>
-                        <td style={{ ...tdRight, fontWeight: 600 }}>${r.totalCost.toFixed(0)}</td>
+                        <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.aircraftCost > 0 ? `$${r.aircraftCost.toFixed(0)}` : '—'}</td>
+                        <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.instructorCost > 0 ? `$${r.instructorCost.toFixed(0)}` : '—'}</td>
+                        <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.simDeviceCost > 0 ? `$${r.simDeviceCost.toFixed(0)}` : '—'}</td>
+                        <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.groundCost > 0 ? `$${r.groundCost.toFixed(0)}` : '—'}</td>
+                        {(() => {
+                          // OOP rows route the whole lesson cost into +OOP; everything else
+                          // just shows the aircraft surcharge there. LU-billed Lesson $ then
+                          // reflects what LU actually pays (zero for OOP rows).
+                          const oopAmt = r.isOop
+                            ? r.luLessonCost + r.aircraftSurcharge
+                            : r.aircraftSurcharge
+                          const lessonAmt = r.isOop ? 0 : r.totalCost
+                          return (<>
+                            <td style={{ ...tdRight, color: oopAmt > 0 ? '#b45309' : '#d1d5db', fontWeight: oopAmt > 0 ? 600 : 400 }}>
+                              {oopAmt > 0 ? `+$${oopAmt.toFixed(0)}` : '—'}
+                            </td>
+                            <td style={{ ...tdRight, fontWeight: 600, color: r.isOop ? '#9ca3af' : undefined }}>
+                              ${lessonAmt.toFixed(0)}
+                            </td>
+                          </>)
+                        })()}
                         {mode === 'cost' && <td style={{ ...tdRight, color: '#1a3a5c', fontWeight: 600 }}>${Math.round(running).toLocaleString()}</td>}
                         {mode === 'balance' && (
                           <td style={{ ...tdRight, color: running >= 0 ? '#15803d' : '#dc2626', fontWeight: 600 }}>

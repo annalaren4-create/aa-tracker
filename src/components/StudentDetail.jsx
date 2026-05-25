@@ -424,8 +424,16 @@ export default function StudentDetail({
                   proj. <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projected.toLocaleString()}</span> at target hrs
                 </div>
               )}
-              {progress.projectedWithRepeat != null && (
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }} title="Adds a typical 1-repeat buffer (2.0 hr dual + 0.7 hr ground) on top of the baseline projection.">
+              {progress.instructorPremium > 0 && (
+                <div
+                  style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}
+                  title="LU still pays full rate for higher-rate instructors (chiefs/asst chiefs). This is the extra amount baked into the LU projection because logged flights used an instructor whose rate exceeds the primary's."
+                >
+                  ↑ ${progress.instructorPremium.toLocaleString()} from higher-rate instructor
+                </div>
+              )}
+              {progress.projectedWithRepeat != null && progress.repeatsRemaining > 0 && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }} title="Adds a typical 1-repeat buffer (2.0 hr dual + 0.7 hr ground) on top of the baseline projection. Hidden once Liberty's funded repeat allowance is used up.">
                   w/ repeat <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projectedWithRepeat.toLocaleString()}</span>
                 </div>
               )}
@@ -823,21 +831,47 @@ export default function StudentDetail({
             const targetInst = course.lessons.reduce((s,l) => s + (l.i  || 0), 0)
             const targetSim  = course.lessons.reduce((s,l) => s + (l.sm || 0), 0)
             const targetGnd  = course.lessons.reduce((s,l) => s + (l.g  || 0), 0)
-            // Over/Under total = sum of each row's per-attempt over/under
-            // (only rows that actually have flight logged + a target).
+            // Over/Under total = sum of (actual − target) per lesson "attempt",
+            // where an attempt is the chain of original + split-continuations
+            // (those all sum vs ONE lesson target), and each repeat is its own
+            // attempt vs the lesson target. Combined-primary rows include the
+            // sibling lesson's target; combined-child rows are skipped (their
+            // hours are recorded on the primary).
             let overUnderTot = 0
             let anyDiff = false
-            const addDiff = (lesson, lg) => {
-              const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
-              const target    = lesson.t || 0
-              if (actualFlt > 0 && target > 0) {
-                overUnderTot += (actualFlt - target)
+            const hours = (lg) => (lg?.dual || 0) + (lg?.solo || 0) + (lg?.sim || 0)
+            course.lessons.forEach((lesson) => {
+              const origLg = sLogs[lesson.id]
+              // Combined child: its hours are folded into the primary row.
+              if (origLg?.combinedFrom) return
+
+              // Original + splits → one summed attempt vs the lesson target
+              let chainActual = hours(origLg)
+              splitKeysFor(sLogs, lesson.id).forEach((sk) => { chainActual += hours(sLogs[sk]) })
+
+              let target = lesson.t || 0
+              // If this lesson is the primary of a combined pair, add sibling target.
+              if (lesson.combinableWith) {
+                const sibLg = sLogs[lesson.combinableWith]
+                if (sibLg?.combinedFrom === lesson.id) {
+                  const sibDef = course.lessons.find((l) => l.id === lesson.combinableWith)
+                  if (sibDef) target += (sibDef.t || 0)
+                }
+              }
+
+              if (chainActual > 0 && target > 0) {
+                overUnderTot += (chainActual - target)
                 anyDiff = true
               }
-            }
-            course.lessons.forEach((lesson) => {
-              addDiff(lesson, sLogs[lesson.id] || {})
-              repeatKeysFor(sLogs, lesson.id).forEach((rk) => addDiff(lesson, sLogs[rk] || {}))
+
+              // Each repeat: its own attempt vs the (single) lesson target
+              repeatKeysFor(sLogs, lesson.id).forEach((rk) => {
+                const r = hours(sLogs[rk])
+                if (r > 0 && (lesson.t || 0) > 0) {
+                  overUnderTot += (r - (lesson.t || 0))
+                  anyDiff = true
+                }
+              })
             })
             return (
               <div style={{
