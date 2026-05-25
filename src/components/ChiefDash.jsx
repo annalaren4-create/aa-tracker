@@ -83,13 +83,16 @@ export default function ChiefDash({
     .filter((s) => !search.trim() || s.name.toLowerCase().includes(search.toLowerCase()))
 
   // If the logged-in chief is also an instructor, float their own primary students
-  // to the top of the list, then their secondaries, then everyone else.
+  // to the top of the list, then their secondaries, then everyone else. Their
+  // OWN training record (e.g. David Pagano-as-student) sits at rank 0 too
+  // so they can jump straight to their own course progress.
   const myName = account?.name
   const myRank = (s) => {
-    if (!myName) return 2
-    if (eqName(s.primaryInstructor, myName)) return 0
-    if (eqName(s.secondaryInstructor, myName)) return 1
-    return 2
+    if (!myName) return 3
+    if (eqName(s.name, myName)) return 0                  // student card IS me — strictly first
+    if (eqName(s.primaryInstructor, myName)) return 1
+    if (eqName(s.secondaryInstructor, myName)) return 2
+    return 3
   }
   const visibleStudents = [...filtered].sort((a, b) => {
     const rankDiff = myRank(a) - myRank(b)
@@ -372,8 +375,12 @@ function MiniStat({ label, value, small }) {
 }
 
 function StudentRow({ student, progress: p, pace, striped, myName, instructors = [], onUpdateStudent, onView, onDelete, onDeleteAccount }) {
+  // 'You' = this student card is the logged-in user's own training record
+  // (instructor who's also a student). Otherwise reflect their teaching
+  // relationship to the student.
   const myRole = myName
-    ? (eqName(student.primaryInstructor, myName) ? 'Primary'
+    ? (eqName(student.name, myName) ? 'You'
+       : eqName(student.primaryInstructor, myName) ? 'Primary'
        : eqName(student.secondaryInstructor, myName) ? 'Secondary'
        : null)
     : null
@@ -431,7 +438,7 @@ function StudentRow({ student, progress: p, pace, striped, myName, instructors =
           </span>
           {myRole && (
             <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)', fontSize: 9, padding: '1px 5px', flexShrink: 0 }}>
-              {myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+              {myRole === 'You' ? '★ You' : myRole === 'Primary' ? '★ Primary' : 'Secondary'}
             </span>
           )}
           {pace?.atRisk && (

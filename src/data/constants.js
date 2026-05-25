@@ -1,5 +1,14 @@
 export const LOCATIONS = ['KHEF', 'KRMN', 'KHWY', 'KOKV', 'KJYO']
 
+/**
+ * Invite code required at registration to pick the Chief / Assistant Chief
+ * Instructor role. Without this gate, anyone who registers as "Chief" gets
+ * full management access (delete students, set instructor rates, etc.).
+ * Share this code privately with new chiefs / asst chiefs. Change it in code
+ * any time the school wants to rotate it.
+ */
+export const CHIEF_ACCESS_CODE = 'aa-chief-2026'
+
 export const SCHOOLS = [
   'Liberty University',
   'Purdue Global',

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { COURSES, COURSE_NAMES } from '../data/courses'
-import { LOCATIONS, SCHOOLS } from '../data/constants'
+import { LOCATIONS, SCHOOLS, CHIEF_ACCESS_CODE } from '../data/constants'
 import { registerAccount } from '../utils/auth'
+import { eqName } from '../utils/storage'
 
 // Default aircraft per course — mirrors AddStudentModal's logic
 function defaultAircraft(course) {
@@ -43,7 +44,10 @@ export default function Register({ students, instructors = [], calcProgress, onA
     ? students.filter((s) => s.name.toLowerCase().includes(search.toLowerCase().trim()))
     : []
 
-  const totalSteps = role === 'student' ? 4 : 3
+  // Students always have a 4-step flow. Instructors/chiefs are 3 steps by
+  // default but bump to 4 when they're shown the "Is this you?" confirmation.
+  const hasInstructorMatchStep = role && role !== 'student' && instructors.some((i) => eqName(i.name, name))
+  const totalSteps = (role === 'student' || hasInstructorMatchStep) ? 4 : 3
   const stepDisplay = step === 4 ? totalSteps : step
 
   function handleNameNext(e) {
@@ -52,20 +56,81 @@ export default function Register({ students, instructors = [], calcProgress, onA
     setStep(2)
   }
 
+  // Pre-computed list of instructor roster entries that the entered name
+  // resolves to via eqName (handles casing, whitespace, and nickname aliases).
+  // Used to show an "Is this you?" confirmation step for instructor/chief
+  // registrations so accounts attach to the canonical roster entry.
+  const rosterMatches = instructors.filter((i) => eqName(i.name, name))
+
   function handleRoleSelect(r, rl) {
+    // Chief / Assistant Chief is gated by an invite code so randoms can't
+    // grant themselves management access just by picking the tile. The
+    // code lives in src/data/constants.js (CHIEF_ACCESS_CODE) and should
+    // be shared privately with new chiefs.
+    if (r === 'chief') {
+      const entered = window.prompt('Chief Instructor access is restricted.\n\nEnter the chief invite code to continue:')
+      if (entered === null) return                                   // cancelled
+      if (entered.trim() !== CHIEF_ACCESS_CODE) {
+        alert('Invalid chief invite code. Please request the current code from a chief instructor, or pick the Instructor role instead.')
+        return
+      }
+    }
     setRole(r)
     setRoleLabel(rl)
     setUsername(name.trim().toLowerCase().replace(/\s+/g, '.').slice(0, 24))
+    // Picking a non-student role wipes any leftover student-record link
+    // from a previous pass through the form — otherwise "Linked to: Adam
+    // Medina" would haunt a follow-up instructor signup for Bob Hepp.
+    if (r !== 'student') {
+      setStudentRecord(null)
+      setCreateMode(false)
+    }
     if (r === 'student') {
       setSearch(name.trim())
       setStep(3)
+    } else if (instructors.some((i) => eqName(i.name, name))) {
+      // Possible instructor-roster match — interrupt with confirmation so
+      // the account snaps to the canonical roster spelling.
+      setStep(3)
     } else {
+      // No roster match; skip the confirmation step entirely.
       setStep(4)
     }
   }
 
+  // "Yes, that's me" — snap the displayed name to the canonical roster
+  // spelling (e.g. "Brendy Gillespie" → "Brenda Gillespie") and continue.
+  function handleConfirmInstructor(roster) {
+    setName(roster.name)
+    setStep(4)
+  }
+  // "No, I'm a new instructor" — keep the typed name as-is and continue.
+  function handleSkipInstructorMatch() {
+    setStep(4)
+  }
+
   function handleStudentSelect(student) {
     setStudentRecord(student)
+    // If the typed name is also on the INSTRUCTOR roster (e.g. David Pagano
+    // who teaches and is also working on his own ratings), give them a
+    // chance to "merge" into a single instructor account instead of
+    // creating a student-only login. Instructor accounts already pick up
+    // their own training record under the new "My Course" section, so
+    // there's no loss of access — and they gain logging / management.
+    const rosterMatch = instructors.find((i) => eqName(i.name, name))
+    if (rosterMatch) {
+      const upgrade = window.confirm(
+        `${rosterMatch.name} is also on the instructor roster.\n\n` +
+        `Would you like to register as an Instructor instead? You'll still see your own training record under "My Course," plus you can log flights for students you teach.\n\n` +
+        `OK = register as Instructor (recommended)\nCancel = register as Student only`
+      )
+      if (upgrade) {
+        setRole('instructor')
+        setRoleLabel('Instructor')
+        setName(rosterMatch.name)              // snap to canonical roster spelling
+        setStudentRecord(null)                 // instructor accounts don't store studentId
+      }
+    }
     setStep(4)
   }
 
@@ -105,6 +170,9 @@ export default function Register({ students, instructors = [], calcProgress, onA
     if (password !== confirm) { setError('Passwords do not match.'); return }
     if (role === 'student' && !studentRecord) { setError('Please select your student record first.'); return }
 
+    // For instructor/chief signups with a roster match, the user already
+    // confirmed the canonical spelling at step 3 ("Is this you?") and
+    // setName updated state to the roster entry. We just use it directly.
     const result = registerAccount({
       name: name.trim(),
       username: username.trim(),
@@ -128,8 +196,31 @@ export default function Register({ students, instructors = [], calcProgress, onA
               // (student-record lookup) for non-student roles, so Back from
               // step 4 has to skip it the same way going backwards.
               if (step === 1) { onBack(); return }
+              // Going back to step 1 = the user wants to start over.
+              // Reset any downstream state from a previous attempt so the
+              // next role pick doesn't inherit a stale Linked-to label,
+              // username, role, or error.
+              if (step === 2) {
+                setRole('')
+                setRoleLabel('')
+                setStudentRecord(null)
+                setSearch('')
+                setUsername('')
+                setError('')
+                setCreateMode(false)
+                setStep(1)
+                return
+              }
               if (step === 3 && createMode) { setCreateMode(false); return }
-              if (step === 4) { setStep(role === 'student' ? 3 : 2); return }
+              if (step === 4) {
+                // Back from password-step lands on whichever step came before:
+                //   - student → step 3 (find-record search)
+                //   - instructor/chief WITH roster matches → step 3 ("is this you?")
+                //   - instructor/chief WITHOUT matches → step 2 (role select)
+                const skippedStep3 = role !== 'student' && !hasInstructorMatchStep
+                setStep(skippedStep3 ? 2 : 3)
+                return
+              }
               setStep(step - 1)
             }}
           >← Back</button>
@@ -216,8 +307,59 @@ export default function Register({ students, instructors = [], calcProgress, onA
             </div>
           )}
 
+          {/* Step 3 (instructor/chief) — "Is this you?" confirmation. Shows
+              the roster entries whose names eqName-match what the user typed
+              so the account links to the canonical roster spelling instead
+              of creating a parallel record. */}
+          {step === 3 && role !== 'student' && (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Is this you?</h2>
+                <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                  We found {rosterMatches.length === 1 ? 'a matching' : 'matching'} instructor record{rosterMatches.length === 1 ? '' : 's'} for <strong>{name}</strong>
+                </p>
+              </div>
+              <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                {rosterMatches.map((ins) => (
+                  <div
+                    key={ins.id || ins.name}
+                    onClick={() => handleConfirmInstructor(ins)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                      border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer',
+                      transition: 'border-color .15s, background .15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--aa-red)'; e.currentTarget.style.background = '#fef2f2' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = '' }}
+                  >
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--aa-navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                      {ins.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{ins.name}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>
+                        {[ins.base, ins.cert, ins.lineRate ? `$${ins.lineRate}/hr` : null].filter(Boolean).join(' · ') || 'Instructor'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--aa-red)', fontWeight: 600 }}>Yes, that's me →</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 14, textAlign: 'center' }}>
+                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Not you? Continue as a new instructor with that name.</p>
+                <button
+                  className="btn"
+                  style={{ width: '100%', justifyContent: 'center', padding: '9px 14px' }}
+                  onClick={handleSkipInstructorMatch}
+                >
+                  No, I'm new →
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Step 3 — Find existing record OR create your own */}
-          {step === 3 && !createMode && (
+          {step === 3 && role === 'student' && !createMode && (
             <div>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Find your student record</h2>
@@ -279,7 +421,7 @@ export default function Register({ students, instructors = [], calcProgress, onA
           )}
 
           {/* Step 3b — Self-service profile questionnaire */}
-          {step === 3 && createMode && (
+          {step === 3 && role === 'student' && createMode && (
             <form onSubmit={handleCreateProfile}>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>Tell us about your training</h2>

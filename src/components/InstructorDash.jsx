@@ -20,11 +20,34 @@ export default function InstructorDash({
 
   const locationStudents = students.filter((s) => s.base === activeLocation)
 
-  // Split into "mine" (this instructor is primary or secondary) vs. others
+  // Three buckets, in display order:
+  //   1. My Course — the logged-in user's OWN student record (e.g. David
+  //      Pagano is on the instructor roster but also trains). Separate
+  //      section so it doesn't get lost inside "My Students".
+  //   2. My Students — those I primary/secondary instruct (excluding myself).
+  //   3. Other Students — everyone else at this location.
   const myName = account?.name
-  const isMine = (s) => myName && (eqName(s.primaryInstructor, myName) || eqName(s.secondaryInstructor, myName))
-  const myStudents = myName ? locationStudents.filter(isMine) : []
-  const otherStudents = myName ? locationStudents.filter((s) => !isMine(s)) : locationStudents
+  const isSelfStudent = (s) => myName && eqName(s.name, myName)
+  const isMyStudent   = (s) => myName && !isSelfStudent(s) && (
+    eqName(s.primaryInstructor, myName) ||
+    eqName(s.secondaryInstructor, myName)
+  )
+  const mySelf        = myName ? locationStudents.find(isSelfStudent) : null
+  // Sort My Students with primaries first, secondaries next, name as tiebreak,
+  // so primary assignments always sit at the top of the section.
+  const studentRank = (s) =>
+    eqName(s.primaryInstructor, myName) ? 0
+    : eqName(s.secondaryInstructor, myName) ? 1
+    : 2
+  const myStudents = myName
+    ? locationStudents.filter(isMyStudent).sort((a, b) => {
+        const rd = studentRank(a) - studentRank(b)
+        return rd !== 0 ? rd : a.name.localeCompare(b.name)
+      })
+    : []
+  const otherStudents = myName
+    ? locationStudents.filter((s) => !isSelfStudent(s) && !isMyStudent(s))
+    : locationStudents
 
   return (
     <div>
@@ -85,6 +108,30 @@ export default function InstructorDash({
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 16 }}>
+            {/* My Course — the logged-in user's own training record. Shown
+                as its own section above My Students so an instructor who's
+                also a student sees their progress separately. */}
+            {mySelf && (
+              <section>
+                <SectionHeader
+                  label="My Course"
+                  hint="Your own training record"
+                  accent
+                />
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <StudentCard
+                    key={mySelf.id}
+                    student={mySelf}
+                    progress={calcProgress(mySelf)}
+                    isMine
+                    myName={myName}
+                    onView={() => onSelectStudent(mySelf)}
+                    onDelete={() => { if (confirm(`Remove ${mySelf.name}?`)) onDeleteStudent(mySelf.id) }}
+                  />
+                </div>
+              </section>
+            )}
+
             {/* My students */}
             {myStudents.length > 0 && (
               <section>
@@ -112,7 +159,7 @@ export default function InstructorDash({
             {/* Other students at this location */}
             {otherStudents.length > 0 && (
               <section>
-                {myStudents.length > 0 && (
+                {(mySelf || myStudents.length > 0) && (
                   <SectionHeader
                     label={`Other Students at ${activeLocation} (${otherStudents.length})`}
                   />
@@ -190,9 +237,13 @@ function StudentCard({ student, progress: p, isMine, myName, onView, onDelete })
     : student.school === 'California Aeronautics University' ? 'tag-green'
     : 'tag-gray'
 
-  // Indicate whether this instructor is primary or secondary
+  // Indicate whether this instructor is primary, secondary, or whether the
+  // student card actually IS the logged-in user's own training record (e.g.
+  // David Pagano showing up in his own My Students list).
   const myRole = isMine && myName
-    ? (eqName(student.primaryInstructor, myName) ? 'Primary' : 'Secondary')
+    ? (eqName(student.name, myName) ? 'You'
+       : eqName(student.primaryInstructor, myName) ? 'Primary'
+       : 'Secondary')
     : null
 
   return (
@@ -235,7 +286,7 @@ function StudentCard({ student, progress: p, isMine, myName, onView, onDelete })
           <span className={`tag ${schoolTag}`}>{schoolShort}</span>
           {myRole && (
             <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)' }}>
-              {myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+              {myRole === 'You' ? '★ You' : myRole === 'Primary' ? '★ Primary' : 'Secondary'}
             </span>
           )}
         </div>

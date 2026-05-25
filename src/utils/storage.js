@@ -70,6 +70,7 @@ const NICKNAME_ALIASES = {
   cynthia:   ['cindy'],
   victoria:  ['vicki', 'vickie', 'tori'],
   pamela:    ['pam'],
+  brenda:    ['brendy', 'bren'],
 }
 
 // Flatten into a fast lookup: any alias OR canonical name → a Set of all
