@@ -6,17 +6,19 @@ import { eqName } from '../utils/storage'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
+import AccountSettingsModal from './modals/AccountSettingsModal'
 
 // Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Date · Status
 const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 64px 56px 1fr 88px 64px'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, account, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
+  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
 }) {
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
   const [showLegend, setShowLegend] = useState(false)
+  const [showAcctSettings, setShowAcctSettings] = useState(false)
   // Course selector — defaults to the student's current/active course. When
   // switched to a past course (from courseHistory), the page renders that
   // course's logs read-only.
@@ -132,6 +134,12 @@ export default function StudentDetail({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className="btn btn-sm btn-ghost" onClick={onBack}>← Back</button>
           <button className="btn btn-sm btn-ghost" onClick={() => window.print()}>Print</button>
+          {/* Account settings only on the signed-in student's OWN detail page —
+              instructors/chiefs use the Account button on their dashboard so it
+              doesn't appear when they're viewing someone else's record. */}
+          {account?.role === 'student' && account?.studentId === student.id && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setShowAcctSettings(true)}>Account</button>
+          )}
           <div>
             <h1>{student.name}</h1>
             <small>
@@ -1078,6 +1086,13 @@ export default function StudentDetail({
             setLogLesson(null)
           }}
           onClose={() => setLogLesson(null)}
+        />
+      )}
+      {showAcctSettings && account && (
+        <AccountSettingsModal
+          account={account}
+          onUpdateAccount={onUpdateAccount}
+          onClose={() => setShowAcctSettings(false)}
         />
       )}
     </div>

@@ -443,6 +443,14 @@ export default function App() {
     setView('home')
   }
 
+  // Sync App-level currentAccount after the user changes their own username
+  // or password in the AccountSettingsModal — keeps role/name etc. intact
+  // while picking up the updated fields.
+  const handleUpdateAccount = (nextAccount) => {
+    if (!nextAccount) return
+    setCurrentAccount((prev) => ({ ...prev, ...nextAccount }))
+  }
+
   const isInstructor = currentAccount?.role === 'instructor' || currentAccount?.role === 'chief'
 
   /* ── routing ─────────────────────────────────────────────────── */
@@ -503,6 +511,7 @@ export default function App() {
       onResolveRoleRequest={resolveRoleRequest}
       calcProgress={calc}
       onSignOut={handleSignOut}
+      onUpdateAccount={handleUpdateAccount}
     />
   )
 
@@ -525,6 +534,7 @@ export default function App() {
       calcProgress={calc}
       account={currentAccount}
       onSignOut={handleSignOut}
+      onUpdateAccount={handleUpdateAccount}
     />
   )
 
@@ -541,6 +551,7 @@ export default function App() {
       instructors={instructors}
       isInstructor={isInstructor}
       account={currentAccount}
+      onUpdateAccount={handleUpdateAccount}
       onLogFlight={logFlight}
       onClearLesson={clearLesson}
       onUpdateStudent={updateStudent}

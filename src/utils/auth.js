@@ -41,9 +41,34 @@ export function deleteAccount(username) {
 export function changePassword(username, oldPassword, newPassword) {
   const accounts = getAccounts()
   const idx = accounts.findIndex((a) => a.username === username && a.hash === encode(oldPassword))
-  if (idx === -1) return false
+  if (idx === -1) return { error: 'Current password is incorrect.' }
+  if (!newPassword || newPassword.length < 6) return { error: 'New password must be at least 6 characters.' }
   const updated = [...accounts]
   updated[idx] = { ...updated[idx], hash: encode(newPassword) }
   lsSet('accounts', updated)
-  return true
+  return { account: updated[idx] }
+}
+
+/**
+ * Rename a user's username. Requires the current password to confirm identity,
+ * rejects collisions (case-insensitive), and forbids changing the default
+ * `admin` account's username so the seed login keeps working.
+ */
+export function changeUsername(currentUsername, password, newUsername) {
+  const trimmed = (newUsername || '').trim()
+  if (!trimmed) return { error: 'Username cannot be empty.' }
+  if (currentUsername === 'admin') return { error: 'The admin account username cannot be changed.' }
+  const accounts = getAccounts()
+  const idx = accounts.findIndex((a) => a.username === currentUsername && a.hash === encode(password))
+  if (idx === -1) return { error: 'Current password is incorrect.' }
+  if (trimmed.toLowerCase() === currentUsername.toLowerCase()) {
+    return { error: 'New username is the same as the current one.' }
+  }
+  if (accounts.some((a, i) => i !== idx && a.username.toLowerCase() === trimmed.toLowerCase())) {
+    return { error: 'That username is already taken — try another.' }
+  }
+  const updated = [...accounts]
+  updated[idx] = { ...updated[idx], username: trimmed }
+  lsSet('accounts', updated)
+  return { account: updated[idx] }
 }

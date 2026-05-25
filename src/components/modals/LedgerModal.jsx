@@ -117,18 +117,43 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
     return a.date.localeCompare(b.date)
   })
 
+  // Surface the course enrollment fee (e.g. Instrument's $1,000 Simulator
+  // Package) as its own ledger row at the very top of cost / balance views.
+  // Skipped in the hours ledger (no flight time attached). The row is built
+  // here — after sorting — so it always renders first regardless of dates.
+  if (mode !== 'hours' && course?.enrollmentFee > 0) {
+    rows.unshift({
+      key: '__enrollment',
+      lessonId: course.enrollmentFeeLabel || 'Enrollment fee',
+      date: '',
+      instructor: '—',
+      aircraft: '—',
+      repeatIdx: null,
+      isOop: false,
+      isEnrollment: true,
+      dual: 0, solo: 0, sim: 0, ground: 0,
+      aircraftCost: 0, aircraftSurcharge: 0, instructorCost: 0, simDeviceCost: 0, groundCost: 0,
+      luLessonCost: course.enrollmentFee,
+      totalCost:    course.enrollmentFee,
+      totalHours: 0,
+      completed: false,
+      incomplete: false,
+      objectives: '',
+    })
+  }
+
   const title = {
     hours:   'Hours flown — ledger',
     cost:    'Est. cost — ledger',
     balance: 'LU balance — ledger',
   }[mode] || 'Ledger'
 
-  // Running totals for the cost / balance views
+  // Running totals for the cost / balance views. Cost mode starts at 0 — the
+  // enrollment fee is now its own ledger row that adds itself. Balance mode
+  // starts at the flat rate; the enrollment row then subtracts it, matching
+  // how calcProgress derives the dashboard balance.
   let running = 0
-  if (mode === 'cost') {
-    // running starts at enrollment fee
-    running = course?.enrollmentFee || 0
-  } else if (mode === 'balance') {
+  if (mode === 'balance') {
     running = (student.school === 'Liberty University' && course)
       ? (LU_FLAT_RATES[activeCourse] || 0)
       : 0
@@ -195,8 +220,11 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                       <td style={td}>{r.date || '—'}</td>
                       <td style={td}>
                         {r.repeatIdx !== null ? <span style={{ color: '#dc2626' }}>↻ </span> : null}
-                        {r.lessonId}
+                        <span style={{ fontStyle: r.isEnrollment ? 'italic' : 'normal', color: r.isEnrollment ? '#6b7280' : undefined }}>
+                          {r.lessonId}
+                        </span>
                         {r.repeatIdx !== null && <span style={{ color: '#9ca3af', fontSize: 10 }}> (repeat {r.repeatIdx + 1})</span>}
+                        {r.isEnrollment && <span className="tag tag-blue" style={{ marginLeft: 6, fontSize: 9 }}>FEE</span>}
                         {r.isOop && <span className="tag tag-amber" style={{ marginLeft: 6, fontSize: 9 }}>OOP</span>}
                       </td>
                       <td style={{ ...td, fontSize: 11, color: r.aircraftSurcharge > 0 ? '#b45309' : '#374151' }}>{r.aircraft}</td>
@@ -242,12 +270,6 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                 })}
               </tbody>
             </table>
-          )}
-          {mode === 'cost' && course?.enrollmentFee > 0 && (
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
-              Running starts at ${course.enrollmentFee.toLocaleString()}{' '}
-              {course.enrollmentFeeLabel ? course.enrollmentFeeLabel : 'one-time enrollment fee'}.
-            </div>
           )}
         </div>
 

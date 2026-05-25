@@ -5,16 +5,18 @@ import { budgetPct } from '../utils/calculations'
 import { eqName } from '../utils/storage'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
+import AccountSettingsModal from './modals/AccountSettingsModal'
 
 export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
   setView, onSelectStudent, onAddStudent, onDeleteStudent,
   onAddInstructor, onDeleteInstructor, onUpdateInstructor,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
-  calcProgress, account, onSignOut,
+  calcProgress, account, onSignOut, onUpdateAccount,
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
+  const [showAcctSettings, setShowAcctSettings] = useState(false)
 
   const locationStudents = students.filter((s) => s.base === activeLocation)
 
@@ -46,6 +48,11 @@ export default function InstructorDash({
           >
             + Add student
           </button>
+          {account && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setShowAcctSettings(true)}>
+              Account
+            </button>
+          )}
           {onSignOut && (
             <button className="btn btn-sm btn-ghost" onClick={onSignOut}>
               Sign out
@@ -148,6 +155,13 @@ export default function InstructorDash({
           roleRequests={roleRequests}
           onSubmitRoleRequest={onSubmitRoleRequest}
           onResolveRoleRequest={onResolveRoleRequest}
+        />
+      )}
+      {showAcctSettings && account && (
+        <AccountSettingsModal
+          account={account}
+          onUpdateAccount={onUpdateAccount}
+          onClose={() => setShowAcctSettings(false)}
         />
       )}
     </div>

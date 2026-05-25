@@ -3,6 +3,7 @@ import { LOCATIONS } from '../data/constants'
 import { COURSES } from '../data/courses'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
+import AccountSettingsModal from './modals/AccountSettingsModal'
 import { eqName } from '../utils/storage'
 
 const ALL = 'All'
@@ -37,9 +38,11 @@ export default function ChiefDash({
   onAddInstructor, onDeleteInstructor, onUpdateInstructor,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
   calcProgress, onSignOut,
+  account, onUpdateAccount,
 }) {
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
+  const [showAcctSettings, setShowAcctSettings] = useState(false)
   const [courseFilter, setCourseFilter]     = useState('All')
   const [search, setSearch]                 = useState('')
   const [sortCol, setSortCol]               = useState('name')
@@ -145,6 +148,9 @@ export default function ChiefDash({
           >
             + Add student
           </button>
+          {account && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setShowAcctSettings(true)}>Account</button>
+          )}
           <button className="btn btn-sm btn-ghost" onClick={onSignOut}>Sign out</button>
         </div>
       </div>
@@ -310,6 +316,13 @@ export default function ChiefDash({
           roleRequests={roleRequests}
           onSubmitRoleRequest={onSubmitRoleRequest}
           onResolveRoleRequest={onResolveRoleRequest}
+        />
+      )}
+      {showAcctSettings && account && (
+        <AccountSettingsModal
+          account={account}
+          onUpdateAccount={onUpdateAccount}
+          onClose={() => setShowAcctSettings(false)}
         />
       )}
     </div>
