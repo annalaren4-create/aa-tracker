@@ -296,7 +296,8 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
 
   // "With repeat allowance" projection — mirrors the official syllabus assumption
   // that most students will use Liberty's one funded repeat. Adds the cost of a
-  // typical extra lesson (2.0 hr dual + 0.7 hr ground at the student's rates).
+  // typical extra lesson (course.repeatBufferDual hr dual + 0.7 hr ground at
+  // the student's rates). Commercial courses use 1.0 hr; everything else 2.0.
   //
   // Crucially: don't double-count. If the student has already used all of
   // Liberty's funded repeats (`libFundedRepeatIds`), no further LU-funded
@@ -304,7 +305,11 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   // judgement call — we just drop the buffer to zero so the "w/ repeat" line
   // reflects reality. UI can hide the line when the buffer is zero.
   const repeatsRemaining = Math.max(0, libRepeatsAllowed - libFundedRepeatIds.length)
-  const bufferLesson = { d: 2.0, g: 0.7 }
+  // Per-course override for the "with repeat" buffer dual hours. Commercial
+  // courses are typically shorter targeted-repeat flights (~1.0 hr); the
+  // other curriculums hold a full 2.0 hr repeat reserve. Falls back to 2.0
+  // when the course doesn't specify.
+  const bufferLesson = { d: course.repeatBufferDual ?? 2.0, g: 0.7 }
   const { luCost: bufferLu, oopCost: bufferOop } = repeatsRemaining > 0
     ? lessonExpectedCost(
         bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount

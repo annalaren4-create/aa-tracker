@@ -146,7 +146,16 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
     hours:   'Hours flown — ledger',
     cost:    'Est. cost — ledger',
     balance: 'LU balance — ledger',
+    oop:     'Out of pocket — ledger',
   }[mode] || 'Ledger'
+
+  // OOP mode is the student-facing view — show only rows that contributed
+  // to out-of-pocket charges (OOP-flagged rows + any row with an aircraft
+  // surcharge from flying a pricier-than-standard plane). Skip everything
+  // else so the student sees only money they actually owe outside LU.
+  const displayRows = mode === 'oop'
+    ? rows.filter((r) => r.isOop || r.aircraftSurcharge > 0)
+    : rows
 
   // Running totals for the cost / balance views. Cost mode starts at 0 — the
   // enrollment fee is now its own ledger row that adds itself. Balance mode
@@ -176,9 +185,9 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
         </div>
 
         <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-          {rows.length === 0 ? (
+          {displayRows.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 24, color: '#9ca3af', fontSize: 13 }}>
-              No flights logged yet.
+              {mode === 'oop' ? 'No out-of-pocket charges yet.' : 'No flights logged yet.'}
             </div>
           ) : (
             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
@@ -195,7 +204,12 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                     <th style={thRight}>Ground</th>
                     <th style={thRight}>Total</th>
                   </>)}
-                  {mode !== 'hours' && (<>
+                  {mode === 'oop' && (<>
+                    <th style={thRight} title="Aircraft surcharge for flying a pricier-than-standard plane">Aircraft surcharge</th>
+                    <th style={thRight} title="Lesson cost paid out of pocket (OOP repeats, etc.)">OOP lesson $</th>
+                    <th style={thRight}>Running OOP</th>
+                  </>)}
+                  {(mode === 'cost' || mode === 'balance') && (<>
                     <th style={thRight}>Aircraft</th>
                     <th style={thRight}>Instr</th>
                     <th style={thRight}>Sim dev</th>
@@ -208,13 +222,16 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
+                {displayRows.map((r) => {
                   // Running cost and Balance only reflect what LU is billed
                   // (i.e. excluding the OOP aircraft surcharge — that lives in
                   // its own column — AND skipping rows the student paid OOP,
                   // like 2nd+ repeats or stage-check repeats that LU doesn't fund).
                   if (mode === 'cost' && !r.isOop) running += r.luLessonCost
                   if (mode === 'balance' && !r.isOop) running -= r.luLessonCost
+                  // OOP running total: sum of OOP lesson charges + aircraft
+                  // surcharges across all displayed rows.
+                  if (mode === 'oop') running += (r.isOop ? r.luLessonCost : 0) + r.aircraftSurcharge
                   return (
                     <tr key={r.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={td}>{r.date || '—'}</td>
@@ -236,7 +253,19 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                         <td style={tdRight}>{r.ground > 0 ? r.ground.toFixed(1) : '—'}</td>
                         <td style={{ ...tdRight, fontWeight: 600 }}>{r.totalHours > 0 ? r.totalHours.toFixed(1) : '—'}</td>
                       </>)}
-                      {mode !== 'hours' && (<>
+                      {mode === 'oop' && (<>
+                        {/* Just the OOP-relevant columns, plus running OOP. */}
+                        <td style={{ ...tdRight, color: r.aircraftSurcharge > 0 ? '#b45309' : '#d1d5db', fontWeight: r.aircraftSurcharge > 0 ? 600 : 400 }}>
+                          {r.aircraftSurcharge > 0 ? `+$${r.aircraftSurcharge.toFixed(0)}` : '—'}
+                        </td>
+                        <td style={{ ...tdRight, color: r.isOop ? '#b45309' : '#d1d5db', fontWeight: r.isOop ? 600 : 400 }}>
+                          {r.isOop ? `$${r.luLessonCost.toFixed(0)}` : '—'}
+                        </td>
+                        <td style={{ ...tdRight, color: '#b45309', fontWeight: 700 }}>
+                          ${Math.round(running).toLocaleString()}
+                        </td>
+                      </>)}
+                      {(mode === 'cost' || mode === 'balance') && (<>
                         <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.aircraftCost > 0 ? `$${r.aircraftCost.toFixed(0)}` : '—'}</td>
                         <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.instructorCost > 0 ? `$${r.instructorCost.toFixed(0)}` : '—'}</td>
                         <td style={{ ...tdRight, color: r.isOop ? '#9ca3af' : undefined }}>{r.simDeviceCost > 0 ? `$${r.simDeviceCost.toFixed(0)}` : '—'}</td>

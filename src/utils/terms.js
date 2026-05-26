@@ -172,6 +172,49 @@ export function targetDatesForCourse(lessons, sLogs, deadlineIso, today = new Da
 }
 
 /**
+ * Returns true when the student is "falling behind" — defined as having
+ * at least one lesson whose per-lesson target date was 10+ days ago and
+ * that lesson is still not completed. Uses the same target-dates schedule
+ * the lesson table shows, so the chip and the table agree by definition.
+ *
+ * Skips entirely when no pace/FSC deadline is set (no schedule to compare
+ * against) or when the course is already 100% complete.
+ *
+ * Returns `{ behind, daysBehind, lessonId }` so the caller can render
+ * a helpful "12 days behind on 4.1" tag rather than a bare warning.
+ */
+export function behindSchedule(student, course, sLogs, today = new Date()) {
+  if (!course?.lessons?.length) return { behind: false }
+  const dl = effectiveDeadline(student, !!course.lessons.some((l) => l.fsc))
+  if (!dl) return { behind: false }
+  const totalLessons    = course.lessons.length
+  const completedCount  = course.lessons.filter((l) => sLogs[l.id]?.completed).length
+  if (completedCount >= totalLessons) return { behind: false }   // course done
+
+  const targets = targetDatesForCourse(course.lessons, sLogs, dl, today)
+  const todayIso = today.toISOString().slice(0, 10)
+  const cutoff = new Date(todayIso + 'T00:00:00')
+  cutoff.setDate(cutoff.getDate() - 10)
+  const cutoffIso = cutoff.toISOString().slice(0, 10)
+
+  // Find the most-overdue uncompleted lesson whose target was 10+ days ago.
+  let worst = null
+  for (const lesson of course.lessons) {
+    const target = targets[lesson.id]
+    if (!target) continue
+    if (target > cutoffIso) continue                              // target in future or within grace
+    if (sLogs[lesson.id]?.completed) continue                     // done — fine
+    const daysBehind = Math.round(
+      (new Date(todayIso + 'T00:00:00') - new Date(target + 'T00:00:00')) / (1000 * 60 * 60 * 24)
+    )
+    if (!worst || daysBehind > worst.daysBehind) {
+      worst = { daysBehind, lessonId: lesson.id }
+    }
+  }
+  return worst ? { behind: true, ...worst } : { behind: false }
+}
+
+/**
  * Given just a subterm letter ('A' | 'B' | 'D') and "today", return the
  * matching term entry that is currently active or about to start. Lets
  * the UI ask "are you on A, B, or D?" and auto-resolve the semester.

@@ -1,12 +1,20 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { COURSES } from '../../data/courses'
+import { uid, eqName } from '../../utils/storage'
 
 /**
  * Training Review form — mirrors the Liberty University FTA Training Review template.
  * Used when a student has out-of-pocket lesson repeats. Per the FTA Student Handbook:
  * "A Training Review is required for any occurrence in which a student pays out of pocket."
+ *
+ * Adds three things on top of the paper form:
+ *   - typeable signature boxes (FTA designee + student)
+ *   - one-click Email button (mailto: flightaffiliate@liberty.edu, CC's the
+ *     chief(s) at the student's base)
+ *   - on Email or Print, the form is saved to student.trainingReviews so
+ *     chiefs/instructors/students can see the audit trail later
  */
-export default function TrainingReviewModal({ student, logs, oopLessons, policyViolations = [], onClose }) {
+export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], onSaveReview, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
   const course = COURSES[student.course]
   const courseLabel = `${student.course}${course?.avia ? ` (${course.avia})` : ''}`
@@ -39,8 +47,92 @@ export default function TrainingReviewModal({ student, logs, oopLessons, policyV
     rationale:  defaultRationale,
     outcomes:   '',
     funding:    '',
+    designeeSig: '',                                       // data URL of mouse-drawn signature image
+    designeeSigName: '',                                   // printed name for the email body
+    studentSig:  '',
+    studentSigName: '',
   })
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  // Per-base CC routing. Each base has ONE designated chief who receives
+  // every Training Review email from that location — not all chiefs at the
+  // base, just the assigned recipient:
+  //   KHEF → Bob Hepp
+  //   KHWY → John Knapp
+  //   KRMN → Kim Webster
+  //   KJYO → Brenda Gillespie
+  //   KOKV → Brenda Gillespie
+  // Falls back to the school's known email if the roster's record is missing.
+  const TR_CC_BY_BASE = {
+    KHEF: 'Bob Hepp',
+    KHWY: 'John Knapp',
+    KRMN: 'Kim Webster',
+    KJYO: 'Brenda Gillespie',
+    KOKV: 'Brenda Gillespie',
+  }
+  const ccName  = TR_CC_BY_BASE[student.base]
+  const ccChief = ccName ? instructors.find((i) => eqName(i.name, ccName) && i.email) : null
+  const baseChiefs = ccChief ? [ccChief] : []
+
+  // Persist the current state of the form as a training-review record on
+  // the student's profile. Used by both Email and Print actions so the
+  // history stays in sync regardless of which export path was taken.
+  const saveReview = () => {
+    if (!onSaveReview) return
+    onSaveReview(student.id, {
+      id: uid(),
+      date: form.date,
+      course: form.course,
+      writtenBy: form.writtenBy,
+      rationale: form.rationale,
+      outcomes: form.outcomes,
+      funding: form.funding,
+      designeeSig: form.designeeSig,                       // data URL of signature image
+      designeeSigName: form.designeeSigName,
+      studentSig: form.studentSig,
+      studentSigName: form.studentSigName,
+      createdAt: new Date().toISOString(),
+    })
+  }
+
+  const handleEmail = () => {
+    const ccList = baseChiefs.map((c) => c.email).filter(Boolean).join(',')
+    const subject = `Training Review — ${student.name} — ${form.date}`
+    const body = [
+      `FTA: ${form.fta}`,
+      `Course: ${form.course}`,
+      `Student: ${form.student}`,
+      `Date: ${form.date}`,
+      `Written by: ${form.writtenBy}`,
+      ``,
+      `D. Rationale for Training Review:`,
+      form.rationale || '(blank)',
+      ``,
+      `E. Outcomes / Next Steps:`,
+      form.outcomes || '(blank)',
+      ``,
+      `F. Additional Funding Plan:`,
+      form.funding || '(blank)',
+      ``,
+      `FTA Designee: ${form.designeeSigName || '(printed name not set)'} — signature ${form.designeeSig ? 'captured (image)' : 'NOT signed'}`,
+      `Student:      ${form.studentSigName  || '(printed name not set)'} — signature ${form.studentSig  ? 'captured (image)' : 'NOT signed'}`,
+      ``,
+      `Signature images are saved in the student's profile on the Aviation Adventures tracker; print the form as PDF if Liberty needs a visual signed copy.`,
+    ].join('\n')
+    const mailto = `mailto:flightaffiliate@liberty.edu`
+      + `?cc=${encodeURIComponent(ccList)}`
+      + `&subject=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(body)}`
+    saveReview()
+    window.location.href = mailto
+    onClose?.()                                            // close popup once the email client has been kicked off
+  }
+
+  const handlePrint = () => {
+    saveReview()
+    window.print()
+    onClose?.()                                            // close popup after print dialog returns
+  }
 
   return (
     <div className="overlay">
@@ -99,11 +191,31 @@ export default function TrainingReviewModal({ student, logs, oopLessons, policyV
 
           <div className="tr-signatures">
             <div>
-              <div className="sig-line" />
+              <SignaturePad
+                value={form.designeeSig}
+                onChange={(v) => set('designeeSig', v)}
+              />
+              <input
+                type="text"
+                value={form.designeeSigName}
+                onChange={(e) => set('designeeSigName', e.target.value)}
+                placeholder="Print name"
+                style={{ width: '100%', marginTop: 4, padding: '3px 4px', fontSize: 11, border: '1px solid #e5e7eb', borderRadius: 4 }}
+              />
               <div className="sig-label">FTA Designee</div>
             </div>
             <div>
-              <div className="sig-line" />
+              <SignaturePad
+                value={form.studentSig}
+                onChange={(v) => set('studentSig', v)}
+              />
+              <input
+                type="text"
+                value={form.studentSigName}
+                onChange={(e) => set('studentSigName', e.target.value)}
+                placeholder="Print name"
+                style={{ width: '100%', marginTop: 4, padding: '3px 4px', fontSize: 11, border: '1px solid #e5e7eb', borderRadius: 4 }}
+              />
               <div className="sig-label">Student</div>
             </div>
           </div>
@@ -111,7 +223,16 @@ export default function TrainingReviewModal({ student, logs, oopLessons, policyV
 
         <div className="modal-footer no-print">
           <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn btn-primary" onClick={() => window.print()}>Print</button>
+          <button
+            className="btn"
+            onClick={handleEmail}
+            title={baseChiefs.length > 0
+              ? `Sends to flightaffiliate@liberty.edu, CC: ${baseChiefs.map((c) => c.email).join(', ')}`
+              : 'Sends to flightaffiliate@liberty.edu (no chief email on file for this base)'}
+          >
+            Email to Liberty
+          </button>
+          <button className="btn btn-primary" onClick={handlePrint}>Print</button>
         </div>
       </div>
     </div>
@@ -137,6 +258,93 @@ function Field({ label, value, onChange, type = 'text', multiline = false, rows 
           onChange={(e) => onChange(e.target.value)}
           className="tr-input"
         />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Mouse-drawn signature pad. Renders an HTML canvas the user can sign in,
+ * and emits the strokes as a base64 PNG `data:image/png;…` URL via
+ * `onChange`. Includes a Clear button to start over. Touch events handled
+ * too for tablet / phone instructors.
+ */
+function SignaturePad({ value, onChange }) {
+  const canvasRef = useRef(null)
+  const drawing   = useRef(false)
+  const lastPt    = useRef(null)
+
+  // Re-render existing signature when value changes (e.g. on modal re-open).
+  useEffect(() => {
+    const c = canvasRef.current
+    if (!c) return
+    const ctx = c.getContext('2d')
+    ctx.clearRect(0, 0, c.width, c.height)
+    if (value) {
+      const img = new Image()
+      img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height)
+      img.src = value
+    }
+  }, [value])
+
+  const pointAt = (e) => {
+    const c = canvasRef.current
+    const rect = c.getBoundingClientRect()
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+    // Scale for device pixel ratio if canvas width/height differ from CSS size.
+    return { x: x * (c.width / rect.width), y: y * (c.height / rect.height) }
+  }
+
+  const start = (e) => { e.preventDefault(); drawing.current = true; lastPt.current = pointAt(e) }
+  const move  = (e) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const c = canvasRef.current
+    const ctx = c.getContext('2d')
+    const pt = pointAt(e)
+    ctx.lineCap = 'round'
+    ctx.lineWidth = 2
+    ctx.strokeStyle = '#111827'
+    ctx.beginPath()
+    ctx.moveTo(lastPt.current.x, lastPt.current.y)
+    ctx.lineTo(pt.x, pt.y)
+    ctx.stroke()
+    lastPt.current = pt
+  }
+  const end   = () => {
+    if (!drawing.current) return
+    drawing.current = false
+    onChange(canvasRef.current.toDataURL('image/png'))
+  }
+
+  const clear = () => {
+    const c = canvasRef.current
+    c.getContext('2d').clearRect(0, 0, c.width, c.height)
+    onChange('')
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <canvas
+        ref={canvasRef}
+        width={360}
+        height={80}
+        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+        style={{ width: '100%', height: 80, border: '1px solid #d1d5db', borderRadius: 4, background: '#fafafa', touchAction: 'none', cursor: 'crosshair' }}
+      />
+      <button
+        type="button"
+        onClick={clear}
+        style={{ position: 'absolute', top: 4, right: 4, fontSize: 10, padding: '2px 6px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, cursor: 'pointer', color: '#6b7280' }}
+      >
+        Clear
+      </button>
+      {!value && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', fontSize: 11, color: '#d1d5db', fontStyle: 'italic' }}>
+          Sign with mouse / finger
+        </div>
       )}
     </div>
   )

@@ -333,6 +333,15 @@ export default function App() {
     return newStudent
   }
   const updateStudent = (id, changes) => saveStudents(students.map((s) => s.id === id ? { ...s, ...changes } : s))
+
+  // Append a Training Review record to the student's profile. The form is
+  // saved on email or print so the school always has a local audit trail
+  // matching what was sent to Liberty. Visible to chiefs, instructors and
+  // the student themselves on the student-detail page.
+  const saveTrainingReview = (id, review) => saveStudents(students.map((s) => {
+    if (s.id !== id) return s
+    return { ...s, trainingReviews: [...(s.trainingReviews || []), review] }
+  }))
   // "Remove from dashboard" — drops the student record but keeps the login
   // account so the student can be re-added later (or just sign in to view their
   // history). Use this for graduations, transfers, leaves of absence.
@@ -495,6 +504,7 @@ export default function App() {
       account={currentAccount}
       students={students}
       instructors={instructors}
+      logs={logs}
       activeLocation={activeLocation}
       setActiveLocation={setActiveLocation}
       setView={setView}
@@ -519,6 +529,7 @@ export default function App() {
     <InstructorDash
       students={students}
       instructors={instructors}
+      logs={logs}
       activeLocation={activeLocation}
       setActiveLocation={setActiveLocation}
       setView={setView}
@@ -555,6 +566,7 @@ export default function App() {
       onLogFlight={logFlight}
       onClearLesson={clearLesson}
       onUpdateStudent={updateStudent}
+      onSaveTrainingReview={saveTrainingReview}
       onBack={() => {
         if (currentAccount?.role === 'chief') setView('chief')
         else if (currentAccount?.role === 'instructor') setView('dash')

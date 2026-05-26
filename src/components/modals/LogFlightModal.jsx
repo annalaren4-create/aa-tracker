@@ -83,19 +83,21 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   const hasInstructors = instructors.length > 0
 
   const save = () => {
-    // Require the instructor to actively pick a status — Completed, Incomplete,
-    // Repeat (Lib/OOP), Unsuccessful, Split, or "Repeat again" (on the latest
-    // repeat row). Without this guard a half-filled log can be saved as a
-    // perpetually "in progress" entry with no clear next action.
-    const hasStatus = !!(
-      form.completed || form.incomplete ||
-      form.repeatedLib || form.repeatedOop ||
-      (splitChecked && lesson.splittable) ||
-      repeatAgainChecked
-    )
-    if (!hasStatus) {
-      setSaveErr('Pick a status (Completed, Incomplete, Repeat, Unsuccessful, or Split) before saving.')
-      return
+    // Status guard only applies to FRESH logs (no existing data). Once a
+    // log exists — even if it spawned an OOP repeat underneath — the
+    // instructor should be able to update small fields (date, hours)
+    // without being forced to re-pick Completed / Incomplete every time.
+    if (!hasExisting) {
+      const hasStatus = !!(
+        form.completed || form.incomplete ||
+        form.repeatedLib || form.repeatedOop ||
+        (splitChecked && lesson.splittable) ||
+        repeatAgainChecked
+      )
+      if (!hasStatus) {
+        setSaveErr('Pick a status (Completed, Incomplete, Repeat, Unsuccessful, or Split) before saving.')
+        return
+      }
     }
     setSaveErr('')
 

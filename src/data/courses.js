@@ -103,6 +103,7 @@ export const COURSES = {
   'Commercial 1': {
     avia: 'AVIA325',
     targetTotal: 42.0,
+    repeatBufferDual: 1.0,                                 // shorter targeted repeats on the Commercial syllabuses
     lessons: [
       { id: '1.1', d: 3.0, x: 3.0, i: 0.5, g: 0.7, t: 3.0, o: 'Pilotage/Dead reck, track VOR/GPS, Lost/divert, Sim system/engine out, one landing >100nm from departure airport, Normal landing' },
       { id: '1.2', d: 1.0, i: 0.2, n: 1.0, g: 0.7, t: 1.0, o: 'Night TO/L\'s in the pattern with/without landing light' },
@@ -123,6 +124,7 @@ export const COURSES = {
   'Commercial 2': {
     avia: 'AVIA326',
     targetTotal: 42.0,
+    repeatBufferDual: 1.0,
     lessons: [
       { id: '3.2', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, track VOR/GPS, one landing >100nm from departure arpt, po 180, Short/soft TO/L\'s' },
       { id: '3.3', s: 4.0, x: 4.0, t: 4.0, o: 'Pilotage/Dead reck, track VOR/GPS, one landing >100nm from departure arpt, po 180, Short/soft TO/L\'s' },
@@ -145,6 +147,7 @@ export const COURSES = {
   'Commercial 3': {
     avia: 'AVIA327',
     targetTotal: 36.0,
+    repeatBufferDual: 1.0,
     lessons: [
       { id: '6.1', d: 4.0, i: 0.8, g: 0.7, t: 4.0, splittable: true, o: 'Power off/on & accel stall, steep turns/spiral, chandelle, lazy 8\'s, sim instrument track courses & unusual att, po 180, 8\'s on pylon, Short/Soft TO/L\'s' },
       { id: '6.2', s: 4.0, t: 4.0, splittable: true, o: 'Steep turns, chandelle, steep spiral, lazy 8\'s, 8\'s on pylon, po 180, Short/soft TO/L\'s' },

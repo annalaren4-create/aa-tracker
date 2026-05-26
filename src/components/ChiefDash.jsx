@@ -4,8 +4,9 @@ import { COURSES } from '../data/courses'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
+import TrainingReviewModal from './modals/TrainingReviewModal'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek } from '../utils/terms'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, behindSchedule } from '../utils/terms'
 
 const ALL = 'All'
 
@@ -50,10 +51,12 @@ export default function ChiefDash({
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
   calcProgress, onSignOut,
   onUpdateAccount,
+  logs = {},
 }) {
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
+  const [showBlankTR,      setShowBlankTR]      = useState(false)
   const [courseFilter, setCourseFilter]     = useState('All')
   const [search, setSearch]                 = useState('')
   const [sortCol, setSortCol]               = useState('name')
@@ -165,6 +168,13 @@ export default function ChiefDash({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>Instructors</button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setShowBlankTR(true)}
+            title="Open a fresh Training Review form (no student data pre-filled) in case the original wasn't saved"
+          >
+            Blank Training Review
+          </button>
           <button
             className="btn btn-sm"
             style={{ background: '#2d6ab4', color: '#fff', border: 'none' }}
@@ -291,12 +301,16 @@ export default function ChiefDash({
             {visibleStudents.map((student, i) => {
               const p    = calcProgress(student)
               const pace = getBudgetPace(p)
+              const _course = COURSES[student.course]
+              const _sLogs = (logs[student.id] || {})[student.course] || {}
+              const behind = behindSchedule(student, _course, _sLogs)
               return (
                 <StudentRow
                   key={student.id}
                   student={student}
                   progress={p}
                   pace={pace}
+                  behind={behind}
                   striped={i % 2 === 1}
                   myName={myName}
                   instructors={instructors}
@@ -350,6 +364,16 @@ export default function ChiefDash({
           onClose={() => setShowAcctSettings(false)}
         />
       )}
+      {showBlankTR && (
+        <TrainingReviewModal
+          student={{ id: '—', name: '', base: '', course: '', primaryInstructor: '' }}
+          logs={{}}
+          instructors={instructors}
+          oopLessons={[]}
+          policyViolations={[]}
+          onClose={() => setShowBlankTR(false)}
+        />
+      )}
     </div>
   )
 }
@@ -396,7 +420,7 @@ function MiniStat({ label, value, small }) {
   )
 }
 
-function StudentRow({ student, progress: p, pace, striped, myName, instructors = [], onUpdateStudent, onView, onDelete, onDeleteAccount }) {
+function StudentRow({ student, progress: p, pace, behind, striped, myName, instructors = [], onUpdateStudent, onView, onDelete, onDeleteAccount }) {
   // 'You' = this student card is the logged-in user's own training record
   // (instructor who's also a student). Otherwise reflect their teaching
   // relationship to the student.
@@ -461,6 +485,15 @@ function StudentRow({ student, progress: p, pace, striped, myName, instructors =
           {myRole && (
             <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)', fontSize: 9, padding: '1px 5px', flexShrink: 0 }}>
               {myRole === 'You' ? '★ You' : myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+            </span>
+          )}
+          {behind?.behind && (
+            <span
+              className="tag"
+              style={{ background: '#b91c1c', color: '#fff', fontSize: 9, padding: '1px 5px', flexShrink: 0, fontWeight: 700 }}
+              title={`Lesson ${behind.lessonId}'s target was ${behind.daysBehind} days ago and isn't logged yet.`}
+            >
+              ⚠ Behind {behind.daysBehind}d
             </span>
           )}
           {pace?.atRisk && (

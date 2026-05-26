@@ -6,6 +6,8 @@ import { eqName } from '../utils/storage'
 import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
+import TrainingReviewModal from './modals/TrainingReviewModal'
+import { behindSchedule } from '../utils/terms'
 
 export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
@@ -13,10 +15,12 @@ export default function InstructorDash({
   onAddInstructor, onDeleteInstructor, onUpdateInstructor,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
   calcProgress, account, onSignOut, onUpdateAccount,
+  logs = {},
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
+  const [showBlankTR,      setShowBlankTR]      = useState(false)
 
   const locationStudents = students.filter((s) => s.base === activeLocation)
 
@@ -49,6 +53,9 @@ export default function InstructorDash({
     ? locationStudents.filter((s) => !isSelfStudent(s) && !isMyStudent(s))
     : locationStudents
 
+  // Per-student "falling behind" check — used by each card's red badge.
+  const behindFor = (s) => behindSchedule(s, COURSES[s.course], (logs[s.id] || {})[s.course] || {})
+
   return (
     <div>
       {/* Header */}
@@ -63,6 +70,13 @@ export default function InstructorDash({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>
             Instructors
+          </button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setShowBlankTR(true)}
+            title="Open a fresh Training Review form (no student data pre-filled)"
+          >
+            Blank Training Review
           </button>
           <button
             className="btn btn-sm"
@@ -123,6 +137,7 @@ export default function InstructorDash({
                     key={mySelf.id}
                     student={mySelf}
                     progress={calcProgress(mySelf)}
+                    behind={behindFor(mySelf)}
                     isMine
                     myName={myName}
                     onView={() => onSelectStudent(mySelf)}
@@ -146,6 +161,7 @@ export default function InstructorDash({
                       key={student.id}
                       student={student}
                       progress={calcProgress(student)}
+                      behind={behindFor(student)}
                       isMine
                       myName={myName}
                       onView={() => onSelectStudent(student)}
@@ -170,6 +186,7 @@ export default function InstructorDash({
                       key={student.id}
                       student={student}
                       progress={calcProgress(student)}
+                      behind={behindFor(student)}
                       onView={() => onSelectStudent(student)}
                       onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
                     />
@@ -211,6 +228,16 @@ export default function InstructorDash({
           onClose={() => setShowAcctSettings(false)}
         />
       )}
+      {showBlankTR && (
+        <TrainingReviewModal
+          student={{ id: '—', name: '', base: '', course: '', primaryInstructor: '' }}
+          logs={{}}
+          instructors={instructors}
+          oopLessons={[]}
+          policyViolations={[]}
+          onClose={() => setShowBlankTR(false)}
+        />
+      )}
     </div>
   )
 }
@@ -226,7 +253,7 @@ function SectionHeader({ label, hint, accent }) {
   )
 }
 
-function StudentCard({ student, progress: p, isMine, myName, onView, onDelete }) {
+function StudentCard({ student, progress: p, behind, isMine, myName, onView, onDelete }) {
   const bp = budgetPct(p)
   const schoolShort = student.school === 'Liberty University' ? 'Liberty'
     : student.school === 'Purdue Global' ? 'Purdue'
@@ -287,6 +314,15 @@ function StudentCard({ student, progress: p, isMine, myName, onView, onDelete })
           {myRole && (
             <span className="tag" style={{ background: '#fef2f2', color: 'var(--aa-red)' }}>
               {myRole === 'You' ? '★ You' : myRole === 'Primary' ? '★ Primary' : 'Secondary'}
+            </span>
+          )}
+          {behind?.behind && (
+            <span
+              className="tag"
+              style={{ background: '#b91c1c', color: '#fff', fontWeight: 700 }}
+              title={`Lesson ${behind.lessonId}'s target was ${behind.daysBehind} days ago and still isn't logged.`}
+            >
+              ⚠ Behind {behind.daysBehind}d
             </span>
           )}
         </div>

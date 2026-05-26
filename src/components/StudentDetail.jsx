@@ -3,7 +3,7 @@ import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse } from '../utils/terms'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule } from '../utils/terms'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
@@ -13,7 +13,7 @@ import AccountSettingsModal from './modals/AccountSettingsModal'
 const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 76px 76px 64px'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
+  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onSaveTrainingReview, onBack, calcProgress,
 }) {
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
@@ -55,8 +55,10 @@ export default function StudentDetail({
 
   // How many StatCards will render in the top row. Drives the grid class
   // (grid2/3/4) below so the cards distribute evenly regardless of which
-  // combination of student/instructor/OOP cards are visible today.
-  const _showOopCard   = progress.oopCost > 0 || progress.projectedAircraftOop > 0
+  // combination of student/instructor/OOP cards are visible today. The
+  // OOP tile is student-only — instructors see OOP inline on their Est.
+  // cost card instead.
+  const _showOopCard   = !isInstructor && (progress.oopCost > 0 || progress.projectedAircraftOop > 0)
   const _statCardCount = 1 + (isInstructor ? 2 : 0) + (_showOopCard ? 1 : 0)
   const statCardGridClass = _statCardCount >= 4 ? 'grid4'
     : _statCardCount === 3 ? 'grid3'
@@ -413,6 +415,72 @@ export default function StudentDetail({
           </div>
         )}
 
+        {/* Training Review history — visible to everyone (chiefs, instructors,
+            students). Lists every saved review with date / author / rationale
+            so the trail is preserved in case a printed/emailed copy goes
+            missing. Stays hidden when no reviews have been generated yet. */}
+        {(student.trainingReviews || []).length > 0 && (
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+              <h3 style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+                Training Review history ({student.trainingReviews.length})
+              </h3>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>Saved when a review is e-mailed or printed</span>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {[...student.trainingReviews].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((tr) => (
+                <details key={tr.id} style={{ border: '1px solid #f1f5f9', borderRadius: 6, padding: '6px 10px', background: '#fafafa' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 12, color: '#374151', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <strong>{tr.date ? new Date(tr.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</strong>
+                    <span style={{ color: '#6b7280' }}>{tr.course}</span>
+                    <span style={{ color: '#9ca3af' }}>· written by {tr.writtenBy || '—'}</span>
+                    {tr.designeeSig && tr.studentSig && (
+                      <span className="tag tag-green" style={{ fontSize: 10 }}>signed</span>
+                    )}
+                  </summary>
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#374151', display: 'grid', gap: 6 }}>
+                    {tr.rationale && (
+                      <div><strong style={{ color: '#6b7280' }}>Rationale:</strong>
+                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.rationale}</pre>
+                      </div>
+                    )}
+                    {tr.outcomes && (
+                      <div><strong style={{ color: '#6b7280' }}>Outcomes / Next Steps:</strong>
+                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.outcomes}</pre>
+                      </div>
+                    )}
+                    {tr.funding && (
+                      <div><strong style={{ color: '#6b7280' }}>Funding Plan:</strong>
+                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.funding}</pre>
+                      </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 4, color: '#6b7280' }}>
+                      <div>
+                        <strong>FTA Designee:</strong>{' '}
+                        {tr.designeeSigName || <span style={{ color: '#9ca3af' }}>(no printed name)</span>}
+                        <div style={{ marginTop: 4 }}>
+                          {tr.designeeSig
+                            ? <img src={tr.designeeSig} alt="FTA Designee signature" style={{ maxWidth: '100%', height: 50, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff' }} />
+                            : <span style={{ color: '#dc2626', fontStyle: 'italic' }}>— unsigned —</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Student:</strong>{' '}
+                        {tr.studentSigName || <span style={{ color: '#9ca3af' }}>(no printed name)</span>}
+                        <div style={{ marginTop: 4 }}>
+                          {tr.studentSig
+                            ? <img src={tr.studentSig} alt="Student signature" style={{ maxWidth: '100%', height: 50, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff' }} />
+                            : <span style={{ color: '#dc2626', fontStyle: 'italic' }}>— unsigned —</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Stats — Progress always shown. Est. cost + LU balance shown
             only to instructors. Out-of-pocket card appears for anyone
             (student or instructor) when OOP charges exist. Grid sizes
@@ -427,6 +495,26 @@ export default function StudentDetail({
                 <div className="progress-fill" style={{ width: `${progress.pct}%`, background: '#1a3a5c' }} />
               </div>
             </div>
+            {/* "Falling behind" warning — surfaces when at least one lesson's
+                target completion date is 10+ days in the past and that
+                lesson isn't done yet. Visible to all viewers. */}
+            {(() => {
+              const bs = behindSchedule(student, course, sLogs)
+              if (!bs.behind) return null
+              return (
+                <div
+                  style={{
+                    marginTop: 8, padding: '4px 8px', borderRadius: 4,
+                    background: '#fef2f2', border: '1px solid #fecaca',
+                    color: '#b91c1c', fontSize: 11, fontWeight: 700,
+                    display: 'inline-block',
+                  }}
+                  title={`Lesson ${bs.lessonId}'s target was ${bs.daysBehind} days ago and still isn't logged.`}
+                >
+                  ⚠ Falling behind — {bs.daysBehind}d on lesson {bs.lessonId}
+                </div>
+              )
+            })()}
             {paceProjection && !paceProjection.done && (
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }} title={`Based on ${paceProjection.lessonsPerWeek.toFixed(1)} lessons/week pace since first flight`}>
                 Projected finish:{' '}
@@ -632,7 +720,10 @@ export default function StudentDetail({
                 </div>
               )}
               {progress.projectedWithRepeat != null && progress.repeatsRemaining > 0 && (
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }} title="Adds a typical 1-repeat buffer (2.0 hr dual + 0.7 hr ground) on top of the baseline projection. Hidden once Liberty's funded repeat allowance is used up.">
+                <div
+                  style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}
+                  title={`Adds a typical 1-repeat buffer (${(course.repeatBufferDual ?? 2.0).toFixed(1)} hr dual + 0.7 hr ground) on top of the baseline projection. Hidden once Liberty's funded repeat allowance is used up.`}
+                >
                   w/ repeat <span style={{ fontWeight: 600, color: '#374151' }}>${progress.projectedWithRepeat.toLocaleString()}</span>
                 </div>
               )}
@@ -675,15 +766,17 @@ export default function StudentDetail({
             )
           )}
 
-          {/* Out-of-pocket balance — visible to students and instructors
-              alike whenever there's any OOP at play (e.g. aircraft surcharge
-              for flying a pricier-than-standard plane on a Liberty course).
-              Hidden entirely when there's no OOP, to keep the card row tidy. */}
-          {(progress.oopCost > 0 || progress.projectedAircraftOop > 0) && (
+          {/* Out-of-pocket balance — student-facing only. Instructors and
+              chiefs already see the OOP line inline on their Est. cost
+              card, so duplicating it as a separate tile is redundant.
+              Clicking opens the OOP-only ledger so the student can see
+              each charge that contributed to their out-of-pocket total. */}
+          {!isInstructor && (progress.oopCost > 0 || progress.projectedAircraftOop > 0) && (
             <StatCard
               label="Out of pocket"
               value={`$${progress.oopCost.toLocaleString()}`}
               valueColor="#b45309"
+              onClick={() => setLedgerMode('oop')}
             >
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
                 Charges outside Liberty's flat-rate coverage
@@ -994,23 +1087,45 @@ export default function StudentDetail({
                 {/* Syllabus targets — read-only single numbers per lesson.
                     Uses showLesson so combined pairs (e.g. 8.1 + 8.2) display
                     the summed targets on one line. Split-continuation rows
-                    show "—" for the per-bucket sub-targets, but the Target
-                    column shows the row's portion of the lesson total. */}
-                <TargetCell value={isSplit ? 0 : (showLesson.d  || showLesson.sm)} />
-                <TargetCell value={isSplit ? 0 : showLesson.s} />
-                <TargetCell value={isSplit ? 0 : showLesson.x} />
-                <TargetCell value={isSplit ? 0 : showLesson.i} />
-                <TargetCell value={isSplit ? 0 : showLesson.sm} />
-                <TargetCell value={splitDisplayTarget !== null ? splitDisplayTarget : (showLesson.t)} bold />
+                    show "—" for the per-bucket sub-targets. Lib repeat rows
+                    use the course's "repeat buffer" target (1.0 hr dual on
+                    Commercial courses, 2.0 hr on everything else) — not the
+                    original lesson's full target — because a Liberty-funded
+                    repeat is a shorter targeted fix, not a redo of the whole
+                    lesson. */}
+                {(() => {
+                  const isLibRepeat = isRepeat && repeatBadge === 'Lib'
+                  const repeatDual  = course.repeatBufferDual ?? 2.0
+                  const dualTgt = isSplit ? 0 : isLibRepeat ? repeatDual : (showLesson.d || showLesson.sm)
+                  const soloTgt = isSplit ? 0 : isLibRepeat ? 0 : showLesson.s
+                  const xcTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.x
+                  const iTgt    = isSplit ? 0 : isLibRepeat ? 0 : showLesson.i
+                  const smTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.sm
+                  const totTgt  = splitDisplayTarget !== null
+                    ? splitDisplayTarget
+                    : isLibRepeat ? repeatDual : (showLesson.t)
+                  return (
+                    <>
+                      <TargetCell value={dualTgt} />
+                      <TargetCell value={soloTgt} />
+                      <TargetCell value={xcTgt} />
+                      <TargetCell value={iTgt} />
+                      <TargetCell value={smTgt} />
+                      <TargetCell value={totTgt} bold />
+                    </>
+                  )
+                })()}
 
                 {/* Actual flight time logged this attempt. For split chains
                     we use the redistributed per-row target so over/under is
                     meaningful within each session. */}
                 {(() => {
+                  const isLibRepeat = isRepeat && repeatBadge === 'Lib'
+                  const repeatDual  = course.repeatBufferDual ?? 2.0
                   const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
                   const target    = splitDisplayTarget !== null
                     ? splitDisplayTarget
-                    : (showLesson.t || 0)
+                    : isLibRepeat ? repeatDual : (showLesson.t || 0)
                   const diff      = actualFlt - target
                   const showDiff  = actualFlt > 0 && target > 0
                   return (
@@ -1028,8 +1143,10 @@ export default function StudentDetail({
                   )
                 })()}
 
-                {/* Ground time logged this attempt — keeps the logged/target overlay */}
-                <LogCell logged={lg.ground} rec={showLesson.g} />
+                {/* Ground time logged this attempt — keeps the logged/target
+                    overlay. Lib repeat rows show the buffer ground target
+                    (0.7) rather than the original lesson's ground. */}
+                <LogCell logged={lg.ground} rec={(isRepeat && repeatBadge === 'Lib') ? 0.7 : showLesson.g} />
 
                 <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
                   {isCombinedPrimary ? `${lesson.o} · ${siblingDef.o}` : lesson.o}
@@ -1208,8 +1325,10 @@ export default function StudentDetail({
         <TrainingReviewModal
           student={student}
           logs={sLogs}
+          instructors={instructors}
           oopLessons={oopLessons}
           policyViolations={policyViolations}
+          onSaveReview={onSaveTrainingReview}
           onClose={() => setShowTR(false)}
         />
       )}
@@ -1314,20 +1433,13 @@ export default function StudentDetail({
               })
             }
 
-            // Case A: just flagged the ORIGINAL as a repeat → jump straight to
-            // the first repeat slot so the instructor can log it immediately.
-            const isOriginal = !logLesson.key.includes('__r')
-            const justFlaggedRepeat = isOriginal &&
-              (lessonData.repeatedLib || lessonData.repeatedOop) &&
-              !(prevLg.repeatedLib || prevLg.repeatedOop)
-            if (justFlaggedRepeat) {
-              const parentId = logLesson.lesson.id
-              const existing = repeatKeysFor(sLogs, parentId)
-              const nums = existing.map((k) => parseInt(k.split('__r')[1], 10) || 0)
-              const nextNum = (nums.length ? Math.max(...nums) : 0) + 1
-              setLogLesson({ lesson: logLesson.lesson, key: `${parentId}__r${nextNum}` })
-              return
-            }
+            // Case A: just flagged the ORIGINAL as a repeat. The parent's
+            // repeatedLib / repeatedOop flag automatically makes the row
+            // mapper render a pending __rN placeholder line on the
+            // tracking sheet, so we just close the modal here — the
+            // instructor can click the new row whenever they're ready to
+            // log it. (Previously we auto-opened the next modal, which
+            // felt jarring.)
 
             // Case B: user checked "Repeat again" on a repeat-attempt modal. Save
             // the current attempt (already done above) AND seed an empty next-repeat
