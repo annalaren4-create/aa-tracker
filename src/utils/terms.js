@@ -127,12 +127,24 @@ export function flightsPerWeek(student, progress, courseHasFsc = true, today = n
   return Math.round((remaining / weeks) * 10) / 10
 }
 
-/** Active + future terms only — what should appear in the pace picker.
- *  Filters out B (and any non-A/D subterm) since AA students only
- *  enroll in A or D under the current Liberty calendar setup. */
+/**
+ * Active + future terms only — what should appear in the pace picker.
+ * Filters out:
+ *   - B and any non-A/D subterm (AA students only enroll in A or D)
+ *   - Terms that have already ended
+ *   - Terms whose start year is more than 1 year ahead of today (so the
+ *     2028 calendar entries stay hidden in 2026 even though they're in
+ *     LU_TERMS for forward planning).
+ */
 export function selectableTerms(today = new Date()) {
   const cutoff = today.toISOString().slice(0, 10)
-  return LU_TERMS.filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= cutoff)
+  const maxYear = today.getFullYear() + 1
+  return LU_TERMS.filter((t) => {
+    if (t.subterm !== 'A' && t.subterm !== 'D') return false
+    if (t.end < cutoff) return false
+    const startYear = parseInt(t.start.slice(0, 4), 10)
+    return startYear <= maxYear
+  })
 }
 
 /**

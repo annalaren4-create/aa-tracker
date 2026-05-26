@@ -3,7 +3,7 @@ import { COURSES, getCourseDef, syllabusVersionFor, NEXT_COURSE_OPTIONS } from '
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, LU_TERMS, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule, getTerm, predictNextPace } from '../utils/terms'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule, getTerm, predictNextPace, selectableTerms } from '../utils/terms'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
@@ -438,14 +438,12 @@ export default function StudentDetail({
           const nextCourse = nextCourseChoice || availableOptions[0]
           const predicted = predictNextPace(student)        // null if no upcoming term in LU_TERMS
 
-          // Upcoming semesters the student could enroll in. Includes the
-          // predicted one plus any further-future semesters in LU_TERMS,
-          // so a student can deliberately push their next course out a
-          // semester or two if needed.
-          const todayIso = new Date().toISOString().slice(0, 10)
+          // Upcoming semesters the student could enroll in. Pulled from
+          // selectableTerms() so the "current + next year" visibility
+          // filter is applied consistently — far-future semesters
+          // (2028 calendar entries while we're in 2026) stay hidden.
           const upcomingSemesters = [...new Set(
-            LU_TERMS
-              .filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= todayIso)
+            selectableTerms()
               .sort((a, b) => a.start.localeCompare(b.start))
               .map((t) => t.semester)
           )]
@@ -799,10 +797,11 @@ export default function StudentDetail({
                       student / instructor can push a semester or switch
                       A↔D at any time. */}
                   {(() => {
-                    const todayIsoNow = new Date().toISOString().slice(0, 10)
+                    // Visible semesters use selectableTerms() so the
+                    // 2028 calendar entries stay hidden until we're
+                    // past 2026 (same filter the banner picker uses).
                     const allSemesters = [...new Set(
-                      LU_TERMS
-                        .filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= todayIsoNow)
+                      selectableTerms()
                         .sort((a, b) => a.start.localeCompare(b.start))
                         .map((t) => t.semester)
                     )]

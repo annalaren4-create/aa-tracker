@@ -135,6 +135,18 @@ export const LU_TERMS = [
   // Summer 2027
   { semester: 'Summer 2027', subterm: 'A', start: '2027-05-17', end: '2027-08-20' },
   { semester: 'Summer 2027', subterm: 'D', start: '2027-06-28', end: '2027-08-20' },
+
+  // Fall 2027
+  { semester: 'Fall 2027',   subterm: 'A', start: '2027-08-23', end: '2027-12-17' },
+  { semester: 'Fall 2027',   subterm: 'D', start: '2027-10-25', end: '2027-12-17' },
+
+  // Spring 2028
+  { semester: 'Spring 2028', subterm: 'A', start: '2028-01-17', end: '2028-05-12' },
+  { semester: 'Spring 2028', subterm: 'D', start: '2028-03-20', end: '2028-05-12' },
+
+  // Summer 2028
+  { semester: 'Summer 2028', subterm: 'A', start: '2028-05-15', end: '2028-08-18' },
+  { semester: 'Summer 2028', subterm: 'D', start: '2028-06-26', end: '2028-08-18' },
 ]
 
 /** Buffer (in days) before the D-term start date that B-term flight
