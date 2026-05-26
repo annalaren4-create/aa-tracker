@@ -35,7 +35,10 @@ export default function Register({ students, instructors = [], calcProgress, onA
   const [profile, setProfile]         = useState({
     base: 'KHEF',
     course: 'Private 1',
-    school: 'Liberty University',
+    // Default to Liberty if it's in the SCHOOLS list, otherwise fall back
+    // to the first entry — guards against React's "value not in options"
+    // warning if the list ever gets reordered.
+    school: SCHOOLS.includes('Liberty University') ? 'Liberty University' : SCHOOLS[0],
     primaryInstructor: '',
     secondaryInstructor: '',
   })

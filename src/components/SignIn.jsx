@@ -90,12 +90,17 @@ export default function SignIn({ onSuccess, onRegister, onBack }) {
 
             <div style={{ marginTop: 18, textAlign: 'center', fontSize: 13, color: '#6b7280' }}>
               Don't have an account?{' '}
-              <span
-                style={{ color: '#1a3a5c', fontWeight: 600, cursor: 'pointer' }}
+              <button
+                type="button"
                 onClick={onRegister}
+                style={{
+                  color: '#1a3a5c', fontWeight: 600, cursor: 'pointer',
+                  background: 'transparent', border: 'none', padding: 0,
+                  fontSize: 'inherit', fontFamily: 'inherit',
+                }}
               >
                 Create one
-              </span>
+              </button>
             </div>
 
             {/* Default-admin hint — dev only. Strips out of any production

@@ -6,7 +6,7 @@ import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, behindSchedule } from '../utils/terms'
+import { paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, behindSchedule } from '../utils/terms'
 
 const ALL = 'All'
 
@@ -573,7 +573,6 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
 
   const [hovered, setHovered] = useState(false)
   const [editingPrimary, setEditingPrimary] = useState(false)
-  const [editingSecondary, setEditingSecondary] = useState(false)
 
   // Instructors available at this student's base (used for dropdown options).
   const baseInstructors = instructors
@@ -742,7 +741,7 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
           const courseHasFsc = !!COURSES[student.course]?.lessons?.some((l) => l.fsc)
           const dl = effectiveDeadline(student, courseHasFsc)
           if (!dl) return <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>
-          const status = paceStatus(student, p)
+          const status = paceStatus(student, p, courseHasFsc)
           const days = daysToEffectiveDeadline(student, courseHasFsc)
           const fpw = flightsPerWeek(student, p, courseHasFsc)
           const color = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'

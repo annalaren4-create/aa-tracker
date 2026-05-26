@@ -546,7 +546,7 @@ export default function StudentDetail({
               // lesson; otherwise the pacer falls back to the term cutoff.
               const courseHasFsc = !!course?.lessons?.some((l) => l.fsc)
               const dl = effectiveDeadline(student, courseHasFsc)
-              const status = paceStatus(student, progress)
+              const status = paceStatus(student, progress, courseHasFsc)
               const days = daysToEffectiveDeadline(student, courseHasFsc)
               const fpw = flightsPerWeek(student, progress, courseHasFsc)
               const statusColor = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'

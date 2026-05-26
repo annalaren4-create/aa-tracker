@@ -85,12 +85,19 @@ export function daysToEffectiveDeadline(student, courseHasFsc = true, today = ne
  *   'overdue'  — past deadline (only relevant if course isn't done)
  *   null       — no deadline / pace set
  */
-export function paceStatus(student, progress, today = new Date()) {
+export function paceStatus(student, progress, courseHasFsc = true, today = new Date()) {
   if (progress?.pct >= 100) return 'on-track'              // done is done
   // Back-compat: callers may pass a `pace` object directly instead of a
-  // full student record (old signature). Handle both.
-  const days = (student && (student.scheduledFsc || student.backupFsc || student.pace))
-    ? daysToEffectiveDeadline(student, today)
+  // full student record (old signature). Handle both. The `today` arg
+  // was previously in the third slot; if a Date object was passed there
+  // we treat it as today for back-compat (rather than as courseHasFsc).
+  if (courseHasFsc instanceof Date) {
+    today = courseHasFsc
+    courseHasFsc = true
+  }
+  const isStudent = student && (student.scheduledFsc || student.backupFsc || student.pace)
+  const days = isStudent
+    ? daysToEffectiveDeadline(student, courseHasFsc, today)
     : daysToDeadline(student, today)                       // legacy: student arg was actually a pace
   if (days == null) return null
   if (days < 0)  return 'overdue'
