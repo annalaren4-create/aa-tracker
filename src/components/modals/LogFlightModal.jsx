@@ -84,13 +84,14 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
 
   const save = () => {
     // Require the instructor to actively pick a status — Completed, Incomplete,
-    // Repeat (Lib/OOP), Unsuccessful, or Split. Without this guard a half-
-    // filled log can be saved as a perpetually "in progress" entry with no
-    // clear next action.
+    // Repeat (Lib/OOP), Unsuccessful, Split, or "Repeat again" (on the latest
+    // repeat row). Without this guard a half-filled log can be saved as a
+    // perpetually "in progress" entry with no clear next action.
     const hasStatus = !!(
       form.completed || form.incomplete ||
       form.repeatedLib || form.repeatedOop ||
-      (splitChecked && lesson.splittable)
+      (splitChecked && lesson.splittable) ||
+      repeatAgainChecked
     )
     if (!hasStatus) {
       setSaveErr('Pick a status (Completed, Incomplete, Repeat, Unsuccessful, or Split) before saving.')
@@ -403,11 +404,9 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     onChange={(e) => {
                       const checked = e.target.checked
                       setRepeatAgainChecked(checked)
-                      // Repeat again and Completed/Incomplete are opposite outcomes —
-                      // selecting one clears the other so they can't both be set.
-                      if (checked) {
-                        setForm((f) => ({ ...f, completed: false, incomplete: false }))
-                      }
+                      // "Repeat again" only spawns the next __rN row — it
+                      // doesn't conflict with Completed/Incomplete on the
+                      // current attempt, so we leave any chosen status alone.
                     }}
                     style={{ width: 'auto' }}
                   />

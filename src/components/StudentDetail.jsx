@@ -53,6 +53,16 @@ export default function StudentDetail({
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
 
+  // How many StatCards will render in the top row. Drives the grid class
+  // (grid2/3/4) below so the cards distribute evenly regardless of which
+  // combination of student/instructor/OOP cards are visible today.
+  const _showOopCard   = progress.oopCost > 0 || progress.projectedAircraftOop > 0
+  const _statCardCount = 1 + (isInstructor ? 2 : 0) + (_showOopCard ? 1 : 0)
+  const statCardGridClass = _statCardCount >= 4 ? 'grid4'
+    : _statCardCount === 3 ? 'grid3'
+    : _statCardCount === 2 ? 'grid2'
+    : ''
+
   // Running over/under across all STARTED lessons — same calc the Totals
   // row uses at the bottom of the lesson table, so the two numbers always
   // agree. Surfaces in the LU balance tile too.
@@ -403,9 +413,14 @@ export default function StudentDetail({
           </div>
         )}
 
-        {/* Stats — Progress (always) + Est. cost + LU balance for
-            instructors (3 cards). Students see only Progress. */}
-        <div className={isInstructor ? 'grid3' : ''} style={{ marginBottom: 16 }}>
+        {/* Stats — Progress always shown. Est. cost + LU balance shown
+            only to instructors. Out-of-pocket card appears for anyone
+            (student or instructor) when OOP charges exist. Grid sizes
+            to whichever combination is actually visible. */}
+        <div
+          className={statCardGridClass}
+          style={{ marginBottom: 16 }}
+        >
           <StatCard label="Progress" value={`${progress.pct}%`} valueColor="#1a3a5c">
             <div style={{ marginTop: 6 }}>
               <div className="progress-bar">
@@ -658,6 +673,27 @@ export default function StudentDetail({
             ) : (
               <StatCard label="School" value={student.school} valueSize={14} />
             )
+          )}
+
+          {/* Out-of-pocket balance — visible to students and instructors
+              alike whenever there's any OOP at play (e.g. aircraft surcharge
+              for flying a pricier-than-standard plane on a Liberty course).
+              Hidden entirely when there's no OOP, to keep the card row tidy. */}
+          {(progress.oopCost > 0 || progress.projectedAircraftOop > 0) && (
+            <StatCard
+              label="Out of pocket"
+              value={`$${progress.oopCost.toLocaleString()}`}
+              valueColor="#b45309"
+            >
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                Charges outside Liberty's flat-rate coverage
+              </div>
+              {progress.projectedAircraftOop > progress.oopCost && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  proj. <span style={{ fontWeight: 600, color: '#b45309' }}>${progress.projectedAircraftOop.toLocaleString()}</span> at course end
+                </div>
+              )}
+            </StatCard>
           )}
         </div>
 
