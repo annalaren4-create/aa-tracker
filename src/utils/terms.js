@@ -2,7 +2,7 @@ import { LU_TERMS, LU_DOUBLEUP_BUFFER_DAYS } from '../data/constants'
 
 /**
  * Term-pace helpers. A "pace" is `{ semester, subterm }` — e.g.
- * `{ semester: 'Summer 2026', subterm: 'B' }` — and tells the app when
+ * `{ semester: 'Summer 2026', subterm: 'A' }` — and tells the app when
  * the student's flight training for the current course must be wrapped
  * up. Stored on the student record.
  */
@@ -227,16 +227,21 @@ export function predictNextPace(student, today = new Date()) {
   const currentTerm = getTerm(student.pace)
   if (!currentTerm) return null
 
+  // Only suggest semesters the picker can actually show. selectableTerms
+  // hides anything beyond today's-year + 1, so without this gate the
+  // banner could pre-select a semester the dropdown won't render.
+  const visibleSemesters = new Set(selectableTerms(today).map((t) => t.semester))
+
   // A-term + accelerated → check whether they finished on time.
   if (currentTerm.subterm === 'A' && student.accelerated) {
-    const deadline = flightDeadline(student.pace, true)         // accel deadline = D start − 14
+    const deadline = flightDeadline(student.pace, true)
     const todayIso = today.toISOString().slice(0, 10)
     if (deadline && todayIso <= deadline) {
-      // On time — pick up same-semester D.
       const dTerm = LU_TERMS.find((t) => t.semester === currentTerm.semester && t.subterm === 'D')
-      if (dTerm) return { pace: { semester: dTerm.semester, subterm: 'D' }, accelerated: false }
+      if (dTerm && visibleSemesters.has(dTerm.semester)) {
+        return { pace: { semester: dTerm.semester, subterm: 'D' }, accelerated: false }
+      }
     }
-    // Missed the buffer — fall through to next-semester A.
   }
 
   // Default: roll forward to the next semester's A term.
@@ -244,6 +249,7 @@ export function predictNextPace(student, today = new Date()) {
   const idx = ordered.indexOf(currentTerm.semester)
   if (idx < 0 || idx >= ordered.length - 1) return null
   const nextSemester = ordered[idx + 1]
+  if (!visibleSemesters.has(nextSemester)) return null
   const aTerm = LU_TERMS.find((t) => t.semester === nextSemester && t.subterm === 'A')
   if (!aTerm) return null
   return { pace: { semester: aTerm.semester, subterm: 'A' }, accelerated: false }
@@ -304,7 +310,7 @@ export function behindSchedule(student, course, sLogs, today = new Date()) {
 }
 
 /**
- * Given just a subterm letter ('A' | 'B' | 'D') and "today", return the
+ * Given just a subterm letter ('A' | 'D') and "today", return the
  * matching term entry that is currently active or about to start. Lets
  * the UI ask "are you on A, B, or D?" and auto-resolve the semester.
  * Returns null if no upcoming term of that subterm is in LU_TERMS.

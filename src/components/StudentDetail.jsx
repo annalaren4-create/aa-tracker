@@ -72,7 +72,9 @@ export default function StudentDetail({
         },
       ],
     })
-  }, [progress.pct, viewCourse, student.course, student.id])
+    // courseHistory included so a rapid 100→99→100 flip can re-check
+    // against the latest history and avoid double-archiving.
+  }, [progress.pct, viewCourse, student.course, student.id, student.courseHistory, student.primaryInstructor, student.secondaryInstructor])
   // Per-lesson target dates — spread evenly between training start and the
   // effective deadline. Only meaningful when a deadline (pace or FSC) is
   // set; otherwise targetDates is {} and cells render "—".
@@ -447,7 +449,15 @@ export default function StudentDetail({
               .sort((a, b) => a.start.localeCompare(b.start))
               .map((t) => t.semester)
           )]
-          const chosenSemester = nextSemesterChoice || predicted?.pace.semester || upcomingSemesters[0] || ''
+          // Belt + suspenders: the prediction is already filtered to
+          // selectableTerms() inside predictNextPace, but we still
+          // verify the predicted semester is in the visible list before
+          // defaulting to it — keeps the <select> in a valid state.
+          const predictedSemesterVisible = predicted?.pace.semester && upcomingSemesters.includes(predicted.pace.semester)
+          const chosenSemester = nextSemesterChoice
+            || (predictedSemesterVisible ? predicted.pace.semester : null)
+            || upcomingSemesters[0]
+            || ''
           const semesterTerms = chosenSemester
             ? LU_TERMS.filter((t) => t.semester === chosenSemester && (t.subterm === 'A' || t.subterm === 'D'))
             : []

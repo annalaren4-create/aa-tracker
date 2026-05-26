@@ -98,15 +98,14 @@ export const LU_STANDARD_AIRCRAFT = {
 
 /**
  * Liberty University Online academic calendar — relevant subterms only.
- *   • J term is never used by AA students (skipped here)
- *   • C term is skipped (also not used by AA)
+ *   • J / B / C terms are not used by AA students (skipped here)
  *   • A term = full ~17-week semester pace
- *   • B term = first ~8 weeks (students doubling up enroll for D next)
- *   • D term = second ~8 weeks
+ *   • D term = second ~8 weeks (inherently accelerated)
  *
- * Hard deadline rule: B-term students must have ALL flight lessons for
- * their course complete by 2 weeks before D term starts, so the next
- * course's training has time to begin. See LU_DOUBLEUP_BUFFER_DAYS.
+ * Accelerated-A rule: when a student is on A term AND has the
+ * `accelerated` flag set on their profile, the system applies the
+ * doubleup buffer — their flight deadline becomes D start − 14 days so
+ * they can pick up a D-term course next. See LU_DOUBLEUP_BUFFER_DAYS.
  *
  * Dates are ISO yyyy-mm-dd. Update this list each academic year.
  */
