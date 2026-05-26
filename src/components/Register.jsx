@@ -63,6 +63,33 @@ export default function Register({ students, instructors = [], calcProgress, onA
   const rosterMatches = instructors.filter((i) => eqName(i.name, name))
 
   function handleRoleSelect(r, rl) {
+    // Strict role enforcement based on roster membership. If the typed
+    // name appears on the STUDENT roster but NOT on the instructor
+    // roster, they must register as a student — block the chief /
+    // instructor tile entirely. (Dual-role people like David Pagano
+    // appear on BOTH rosters and bypass this check so they can pick
+    // either role.)
+    const onStudentRoster    = students.some((s) => eqName(s.name, name))
+    const onInstructorRoster = instructors.some((i) => eqName(i.name, name))
+    if ((r === 'instructor' || r === 'chief') && onStudentRoster && !onInstructorRoster) {
+      alert(
+        `${name} is registered as a student. You must use the Student portal.\n\n` +
+        `If you should also be on the instructor roster, please ask a chief to add you first.`
+      )
+      return
+    }
+    // Reverse direction: name is on the INSTRUCTOR roster only — they have
+    // no student record so they can't legitimately register as a student.
+    // (Dual-role on both rosters bypasses this check, since the student
+    // path is also legitimate for them.)
+    if (r === 'student' && onInstructorRoster && !onStudentRoster) {
+      alert(
+        `${name} is registered as an instructor. You must use the Instructor portal.\n\n` +
+        `If you should also have a student record, please ask a chief to add you first.`
+      )
+      return
+    }
+
     // Roster-verified chief flag (e.g. Brenda Gillespie has chief:true on
     // her instructor record). Used to (a) auto-suggest the right role if
     // she clicks Instructor, and (b) skip the invite-code prompt since
