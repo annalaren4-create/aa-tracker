@@ -10,9 +10,13 @@ import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEf
 
 const ALL = 'All'
 
-const PACE_COLOR = { under: '#16a34a', 'on-track': '#d97706', over: '#dc2626' }
-const PACE_BG    = { under: '#f0fdf4', 'on-track': '#fffbeb', over: '#fef2f2' }
-const PACE_TEXT  = { under: '#15803d', 'on-track': '#92400e', over: '#dc2626' }
+// Pace status colors:
+//   under      → light blue (Liberty is *under* projected spend — bonus territory)
+//   on-track   → green (projected to land at/near flat rate)
+//   over       → red (projection exceeds flat rate — needs attention)
+const PACE_COLOR = { under: '#3b82f6', 'on-track': '#16a34a', over: '#dc2626' }
+const PACE_BG    = { under: '#eff6ff', 'on-track': '#f0fdf4', over: '#fef2f2' }
+const PACE_TEXT  = { under: '#1d4ed8', 'on-track': '#15803d', over: '#dc2626' }
 const PACE_LABEL = { under: 'Under', 'on-track': 'On Track', over: 'Over' }
 
 /** Given a calcProgress result, return budget pace info or null.
@@ -210,9 +214,9 @@ export default function ChiefDash({
               Budget Pace · {withStatus.length} students tracked
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, paddingTop: 16 }}>
-              <ChartBar label="Under Budget" count={underCount}   max={maxBarCount} color="#16a34a" />
-              <ChartBar label="On Track"     count={onTrackCount} max={maxBarCount} color="#d97706" />
-              <ChartBar label="Over Budget"  count={overCount}    max={maxBarCount} color="#dc2626" />
+              <ChartBar label="Under Budget" count={underCount}   max={maxBarCount} color={PACE_COLOR.under} />
+              <ChartBar label="On Track"     count={onTrackCount} max={maxBarCount} color={PACE_COLOR['on-track']} />
+              <ChartBar label="Over Budget"  count={overCount}    max={maxBarCount} color={PACE_COLOR.over} />
               <ChartBar label="No Data"      count={noDataCount}  max={maxBarCount} color="#9ca3af" />
             </div>
           </div>
