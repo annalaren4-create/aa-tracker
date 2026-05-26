@@ -14,11 +14,21 @@ const PACE_BG    = { under: '#f0fdf4', 'on-track': '#fffbeb', over: '#fef2f2' }
 const PACE_TEXT  = { under: '#15803d', 'on-track': '#92400e', over: '#dc2626' }
 const PACE_LABEL = { under: 'Under', 'on-track': 'On Track', over: 'Over' }
 
-/** Given a calcProgress result, return budget pace info or null */
+/** Given a calcProgress result, return budget pace info or null.
+ *  Uses `projectedWithRepeat` (which already adds a typical 1-repeat
+ *  buffer when Liberty's funded repeat allowance still has room) so the
+ *  pace status reflects what the course is realistically going to cost,
+ *  not just the syllabus-minimum projection. Falls back to `projected`
+ *  once the repeat allowance is used up. */
 function getBudgetPace(p) {
   if (!p.flatRate) return null
   const remaining   = p.flatRate - p.cost
-  const projected   = p.projected   // from calcProgress: actual + expected remaining
+  // Prefer the repeat-buffered projection while repeats are still funded,
+  // so the chief sees "over" before a student blows past flat rate. Once
+  // the allowance is exhausted, projectedWithRepeat == projected.
+  const projected   = (p.projectedWithRepeat != null && p.repeatsRemaining > 0)
+    ? p.projectedWithRepeat
+    : p.projected
   const spendPct    = Math.min((p.cost / p.flatRate) * 100, 100)
   const expectedPct = Math.min(p.pct, 100)
   let status

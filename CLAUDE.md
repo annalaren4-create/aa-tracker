@@ -14,7 +14,7 @@ Private 1 (AVIA220) · Private 2 (AVIA225) · Instrument (AVIA320) · Commercial
 - Instructor rates: KHEF/KJYO = $100 line / $110 check; KRMN/KHWY/KOKV = $95 line / $105 check
 - Liberty University flat rate flight fees are tracked per course; budget = flatRate - estimatedCost
 - Cost formula: (dual+solo) × aircraftRate + (dual+solo+sim) × instrRate + ground × instrRate
-- Stage checks and progress checks use the check instructor rate (higher)
+- Stage checks (sc:true) and prog checks (pc:true) bill at the regular line instructor rate; only Final Stage Check (fsc:true) bumps to $145
 - Simulator billed at $90/hr flat
 
 ## Two user roles

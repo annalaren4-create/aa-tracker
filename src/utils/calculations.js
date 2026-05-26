@@ -39,15 +39,13 @@ function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, char
   // Rate priority for the non-FSC line rate (highest wins):
   //   1. Specific instructor's lineRate (e.g., chiefs/asst chiefs at $110)
   //   2. Course-level instructorRate override (e.g., MEI at $110)
-  //   3. Stage / prog check rate ($110 KHEF/KJYO, $105 elsewhere) when the
-  //      lesson is flagged sc:true or pc:true — they're flown with a check
-  //      instructor and billed at the higher check rate per AA policy.
-  //   4. Student-base line default ($100 KHEF/KJYO, $95 elsewhere)
+  //   3. Student-base line default ($100 KHEF/KJYO, $95 elsewhere)
   // FSC (fsc:true) always bumps to $145 regardless of who teaches.
-  const isCheckLesson = !!(lesson.sc || lesson.pc)
+  // Stage / prog check lessons (sc:true / pc:true) bill at the regular
+  // line rate at AA — only FSC gets the bump.
   const flightIr = lesson.fsc
     ? FSC_INSTR_RATE
-    : (instructorLineRate || rateOverrides.flight || instrRate(student.base, isCheckLesson))
+    : (instructorLineRate || rateOverrides.flight || instrRate(student.base, false))
   const groundRate = lesson.fsc ? FSC_INSTR_RATE : (rateOverrides.ground || GROUND_RATE)
 
   // Redbird-only: lesson has sm but no d → ignore any logged dual entirely
