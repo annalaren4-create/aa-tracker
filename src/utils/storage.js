@@ -1,8 +1,20 @@
-const PREFIX = 'aa4-'
+import { detectSchoolId } from '../config/branding'
+
+// Storage keys are namespaced by the active school so multiple tenants
+// can coexist in the same browser without colliding (e.g. testing
+// `?school=xyz` while signed in to AA in another tab). The base prefix
+// stays `aa4-` for backward compat with existing AA data — that exact
+// prefix is what the localStorage-wipe snippet still targets. When the
+// active school is AA we keep `aa4-key`; for any other tenant the key
+// becomes `aa4-<schoolId>-key`.
+const BASE_PREFIX = 'aa4-'
+function prefixFor(school = detectSchoolId()) {
+  return school === 'aa' ? BASE_PREFIX : `${BASE_PREFIX}${school}-`
+}
 
 export function lsGet(key) {
   try {
-    const v = localStorage.getItem(PREFIX + key)
+    const v = localStorage.getItem(prefixFor() + key)
     return v ? JSON.parse(v) : null
   } catch {
     return null
@@ -11,7 +23,7 @@ export function lsGet(key) {
 
 export function lsSet(key, value) {
   try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(value))
+    localStorage.setItem(prefixFor() + key, JSON.stringify(value))
   } catch (e) {
     console.error('Storage write failed:', e)
   }
