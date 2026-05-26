@@ -310,12 +310,16 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
         bufferLesson, aircraftRate, student, chargeSimDevice, rateOverrides, primaryLineRate, standardAircraftRate, effectiveDiscount
       )
     : { luCost: 0, oopCost: 0 }
-  const projectedWithRepeat = Math.round(cost + remainingLuCost + bufferLu + bufferOop)
+  // LU-only projection with one repeat allowance. Buffer's OOP surcharge
+  // (from the pricier aircraft, if any) is bucketed into the OOP forecast
+  // below — never mixed into the LU projection.
+  const projectedWithRepeat = Math.round(cost + remainingLuCost + bufferLu)
 
   // Projected aircraft-surcharge OOP from staying on the current (pricier)
   // aircraft for all remaining lessons. Combined with what's already been
-  // incurred, gives the chief a forward-looking OOP estimate.
-  const projectedAircraftOop = Math.round(oopCost + remainingOopCost)
+  // incurred AND the repeat-buffer surcharge, gives the chief a complete
+  // forward-looking OOP estimate.
+  const projectedAircraftOop = Math.round(oopCost + remainingOopCost + bufferOop)
 
   return {
     pct,

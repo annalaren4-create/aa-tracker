@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
-import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
+import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
 import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse } from '../utils/terms'
@@ -567,9 +567,21 @@ export default function StudentDetail({
 
           {isInstructor && (
             <StatCard label="Est. cost" value={`$${progress.cost.toLocaleString()}`} onClick={() => setLedgerMode('cost')}>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
-                ${acRate}/hr acft · ${instrRate(student.base)}/hr instr
-              </div>
+              {(() => {
+                // Show the LU-covered aircraft rate (capped at the course's
+                // standard aircraft for Liberty students) so the figure
+                // matches what's actually driving the projection. Pricier
+                // student aircraft choice flows through to OOP only.
+                const isLiberty = student.school === 'Liberty University'
+                const standardAcId = isLiberty ? LU_STANDARD_AIRCRAFT[viewCourse] : null
+                const standardRate = standardAcId ? AIRCRAFT_RATES[standardAcId] : null
+                const luAcRate = (standardRate != null && standardRate < acRate) ? standardRate : acRate
+                return (
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                    ${luAcRate}/hr acft · ${instrRate(student.base)}/hr instr
+                  </div>
+                )
+              })()}
               {course?.enrollmentFee > 0 && course?.enrollmentFeeLabel && (
                 <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
                   Incl. ${course.enrollmentFee.toLocaleString()} {course.enrollmentFeeLabel}
