@@ -5,6 +5,7 @@ import AddStudentModal from './modals/AddStudentModal'
 import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 import { eqName } from '../utils/storage'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek } from '../utils/terms'
 
 const ALL = 'All'
 
@@ -107,6 +108,16 @@ export default function ChiefDash({
     else if (sortCol === 'base')  { va = a.base;        vb = b.base }
     else if (sortCol === 'pct')   { va = pa.pct;        vb = pb.pct }
     else if (sortCol === 'pace')  { va = paceA?.projected ?? 999999; vb = paceB?.projected ?? 999999 }
+    else if (sortCol === 'deadline') {
+      // Sort by days-to-effective-deadline (scheduled FSC → backup FSC →
+      // term cutoff) so the most urgent sit at the top. Students with
+      // no deadline at all sink to the bottom. Course-has-FSC gating
+      // here too so FSC-less courses use the term cutoff for sort.
+      const aHasFsc = !!COURSES[a.course]?.lessons?.some((l) => l.fsc)
+      const bHasFsc = !!COURSES[b.course]?.lessons?.some((l) => l.fsc)
+      va = daysToEffectiveDeadline(a, aHasFsc) ?? 99999
+      vb = daysToEffectiveDeadline(b, bHasFsc) ?? 99999
+    }
     else if (sortCol === 'remaining') { va = paceA?.remaining ?? -999999; vb = paceB?.remaining ?? -999999 }
     else { va = a.name; vb = b.name }
     if (typeof va === 'string') return va.localeCompare(vb) * sortDir
@@ -244,7 +255,7 @@ export default function ChiefDash({
             {/* Column headers */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 110px',
+              gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 110px 88px 110px',
               gap: 8,
               padding: '6px 12px',
               background: '#f8fafc',
@@ -261,6 +272,7 @@ export default function ChiefDash({
               <SortBtn col="base" align="center">Base</SortBtn>
               <SortBtn col="pct" align="center">Progress</SortBtn>
               <SortBtn col="pace" align="center">Budget Pace</SortBtn>
+              <SortBtn col="deadline" align="center">Deadline</SortBtn>
               <SortBtn col="remaining" align="flex-end">Remaining</SortBtn>
               <div />
             </div>
@@ -406,7 +418,7 @@ function StudentRow({ student, progress: p, pace, striped, myName, instructors =
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 88px 110px',
+        gridTemplateColumns: '28px 1.8fr 1fr 56px 130px 180px 110px 88px 110px',
         gap: 8,
         alignItems: 'center',
         padding: '5px 12px',
@@ -540,6 +552,39 @@ function StudentRow({ student, progress: p, pace, striped, myName, instructors =
         ) : (
           <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>
         )}
+      </div>
+
+      {/* Deadline — effective flight-completion deadline (scheduled FSC,
+          backup FSC, or term cutoff). FSC dates are only honored for
+          courses that include an fsc:true lesson; otherwise the pacer
+          falls back to the term cutoff. Color-coded: green on-track,
+          amber within 14 days, red overdue. */}
+      <div style={{ textAlign: 'center' }}>
+        {(() => {
+          const courseHasFsc = !!COURSES[student.course]?.lessons?.some((l) => l.fsc)
+          const dl = effectiveDeadline(student, courseHasFsc)
+          if (!dl) return <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>
+          const status = paceStatus(student, p)
+          const days = daysToEffectiveDeadline(student, courseHasFsc)
+          const fpw = flightsPerWeek(student, p, courseHasFsc)
+          const color = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'
+          const shortDate = new Date(dl + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
+          // Source tag: FSC scheduled / backup, otherwise the term subterm
+          const src = courseHasFsc && student.scheduledFsc ? 'FSC'
+            : courseHasFsc && student.backupFsc ? 'bkup'
+            : (student.pace?.subterm || '')
+          return (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color, lineHeight: 1.2 }}>{shortDate}</div>
+              <div style={{ fontSize: 9, color: '#9ca3af', lineHeight: 1.3 }}>
+                {fpw != null ? `${fpw.toFixed(1)}/wk` : '—'}
+                {src && ` · ${src}`}
+                {days != null && days >= 0 && status !== 'on-track' && ` · ${days}d left`}
+                {days != null && days < 0 && ` · ${Math.abs(days)}d over`}
+              </div>
+            </>
+          )
+        })()}
       </div>
 
       {/* Remaining budget shown as "$remaining / $flatRate" so the chief

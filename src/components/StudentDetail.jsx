@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, instrRate } from '../data/constants'
-import { budgetPct, budgetColor, overUnder, repeatKeysFor, splitKeysFor } from '../utils/calculations'
+import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse } from '../utils/terms'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 
-// Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Date · Status
-const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 88px 64px'
+// Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Target Date · Actual Date · Status
+const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 76px 76px 64px'
 
 export default function StudentDetail({
   student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onBack, calcProgress,
@@ -41,10 +42,46 @@ export default function StudentDetail({
   const course    = getCourseDef(viewCourse, viewSyllabusVersion)
   const sLogs     = (logs[student.id] || {})[viewCourse] || {}
   const progress  = calcProgress(student, viewCourse)  // calc fn signature is (student, courseOverride)
+  // Per-lesson target dates — spread evenly between training start and the
+  // effective deadline. Only meaningful when a deadline (pace or FSC) is
+  // set; otherwise targetDates is {} and cells render "—".
+  const _courseHasFsc = !!getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons?.some((l) => l.fsc)
+  const _effectiveDl  = effectiveDeadline(student, _courseHasFsc)
+  const _courseLessons = getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons || []
+  const targetDates   = targetDatesForCourse(_courseLessons, sLogs, _effectiveDl)
   const acRate    = AIRCRAFT_RATES[student.aircraft] || 0
-  const ou        = overUnder(student, logs, viewCourse)
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
+
+  // Running over/under across all STARTED lessons — same calc the Totals
+  // row uses at the bottom of the lesson table, so the two numbers always
+  // agree. Surfaces in the LU balance tile too.
+  const runningOverUnder = (() => {
+    const _course = getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))
+    if (!_course) return null
+    const hrs = (lg) => (lg?.dual || 0) + (lg?.solo || 0) + (lg?.sim || 0)
+    let total = 0, any = false
+    _course.lessons.forEach((lesson) => {
+      const origLg = sLogs[lesson.id]
+      if (origLg?.combinedFrom) return                     // child of combined — hours live on primary
+      let chainActual = hrs(origLg)
+      splitKeysFor(sLogs, lesson.id).forEach((sk) => { chainActual += hrs(sLogs[sk]) })
+      let target = lesson.t || 0
+      if (lesson.combinableWith) {
+        const sibLg = sLogs[lesson.combinableWith]
+        if (sibLg?.combinedFrom === lesson.id) {
+          const sibDef = _course.lessons.find((l) => l.id === lesson.combinableWith)
+          if (sibDef) target += (sibDef.t || 0)
+        }
+      }
+      if (chainActual > 0 && target > 0) { total += (chainActual - target); any = true }
+      repeatKeysFor(sLogs, lesson.id).forEach((rk) => {
+        const r = hrs(sLogs[rk])
+        if (r > 0 && (lesson.t || 0) > 0) { total += (r - (lesson.t || 0)); any = true }
+      })
+    })
+    return any ? total : null
+  })()
 
   // Per-field totals for the totals row (includes repeat-attempt logs).
   let totDual = 0, totSolo = 0, totXC = 0, totSim = 0
@@ -366,8 +403,9 @@ export default function StudentDetail({
           </div>
         )}
 
-        {/* Stats */}
-        <div className={isInstructor ? 'grid4' : 'grid2'} style={{ marginBottom: 16 }}>
+        {/* Stats — Progress (always) + Est. cost + LU balance for
+            instructors (3 cards). Students see only Progress. */}
+        <div className={isInstructor ? 'grid3' : ''} style={{ marginBottom: 16 }}>
           <StatCard label="Progress" value={`${progress.pct}%`} valueColor="#1a3a5c">
             <div style={{ marginTop: 6 }}>
               <div className="progress-bar">
@@ -393,12 +431,138 @@ export default function StudentDetail({
                 Need more logged flights to project pace
               </div>
             )}
-          </StatCard>
+            {/* Term-pace + FSC dates + per-week pacing — Liberty A/B/D
+                subterm pacing PLUS a scheduled FSC date (and backup) so
+                the pacer can target the actual planned check ride rather
+                than the term cutoff. Effective deadline order:
+                scheduledFsc → backupFsc → term-pace deadline. */}
+            {(() => {
+              // Some courses (e.g. Commercial 2) don't end with an FSC, so
+              // the scheduled/backup FSC inputs don't apply there. Only
+              // honor them when the current course actually has an fsc:true
+              // lesson; otherwise the pacer falls back to the term cutoff.
+              const courseHasFsc = !!course?.lessons?.some((l) => l.fsc)
+              const dl = effectiveDeadline(student, courseHasFsc)
+              const status = paceStatus(student, progress)
+              const days = daysToEffectiveDeadline(student, courseHasFsc)
+              const fpw = flightsPerWeek(student, progress, courseHasFsc)
+              const statusColor = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'
+              const fmtDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+              const deadlineSource = courseHasFsc && student.scheduledFsc ? 'scheduled FSC'
+                : courseHasFsc && student.backupFsc ? 'backup FSC'
+                : student.pace      ? `${student.pace.semester} · ${student.pace.subterm} term`
+                : null
+              return (
+                <div style={{ fontSize: 11, marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e5e7eb', display: 'grid', gap: 6 }}>
+                  {/* Row 1 — subterm picker (A / B / D). Semester is
+                      auto-resolved to the active or next-starting term
+                      for whichever subterm was chosen, so the user only
+                      has to answer one question. */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#6b7280' }}>Enrolled in:</span>
+                    {['A', 'B', 'D'].map((letter) => {
+                      const active = student.pace?.subterm === letter
+                      const previewTerm = activeTermForSubterm(letter)
+                      return (
+                        <button
+                          key={letter}
+                          type="button"
+                          onClick={() => {
+                            const term = activeTermForSubterm(letter)
+                            if (!term) return
+                            onUpdateStudent(student.id, {
+                              pace: { semester: term.semester, subterm: letter },
+                            })
+                          }}
+                          disabled={!previewTerm}
+                          title={previewTerm ? `${previewTerm.semester}` : 'No upcoming term defined'}
+                          style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 10px',
+                            border: `1px solid ${active ? '#1a3a5c' : '#d1d5db'}`,
+                            background: active ? '#1a3a5c' : '#fff',
+                            color: active ? '#fff' : (previewTerm ? '#374151' : '#d1d5db'),
+                            borderRadius: 4,
+                            cursor: previewTerm ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          {letter} term
+                        </button>
+                      )
+                    })}
+                    {student.pace && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateStudent(student.id, { pace: null })}
+                        style={{ fontSize: 10, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                      >
+                        clear
+                      </button>
+                    )}
+                    {student.pace && (
+                      <span style={{ color: '#9ca3af' }}>
+                        ({student.pace.semester} — term cutoff {fmtDate(flightDeadline(student.pace))})
+                      </span>
+                    )}
+                  </div>
 
-          <StatCard label="Hours flown" value={`${totFlown.toFixed(1)}h`} onClick={() => setLedgerMode('hours')}>
-            <div style={{ fontSize: 12, marginTop: 4, color: ou > 0 ? '#b45309' : ou < 0 ? '#15803d' : '#6b7280' }}>
-              {ou >= 0 ? '+' : ''}{ou.toFixed(1)}h vs {parseFloat(course.targetTotal).toFixed(1)}h target
-            </div>
+                  {/* Row 2 — scheduled + backup FSC date inputs. Only
+                      shown for courses that actually include an FSC
+                      lesson. Courses like Commercial 2 don't have one,
+                      so the pacer relies purely on the term cutoff. */}
+                  {courseHasFsc ? (
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ display: 'flex', gap: 4, alignItems: 'center', color: '#6b7280' }}>
+                        Scheduled FSC:
+                        <input
+                          type="date"
+                          value={student.scheduledFsc || ''}
+                          onChange={(e) => onUpdateStudent(student.id, { scheduledFsc: e.target.value || null })}
+                          style={{ fontSize: 11, padding: '1px 4px', border: '1px solid #d1d5db', borderRadius: 4 }}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', gap: 4, alignItems: 'center', color: '#6b7280' }}>
+                        Backup:
+                        <input
+                          type="date"
+                          value={student.backupFsc || ''}
+                          onChange={(e) => onUpdateStudent(student.id, { backupFsc: e.target.value || null })}
+                          style={{ fontSize: 11, padding: '1px 4px', border: '1px solid #d1d5db', borderRadius: 4 }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                      This course has no Final Stage Check — pacer uses the term cutoff.
+                    </div>
+                  )}
+
+                  {/* Row 3 — effective deadline + per-week pacer */}
+                  {dl && (
+                    <div>
+                      <span style={{ color: '#6b7280' }}>Finish by </span>
+                      <span style={{ fontWeight: 700, color: statusColor }}>{fmtDate(dl)}</span>
+                      {deadlineSource && (
+                        <span style={{ color: '#9ca3af' }}> ({deadlineSource})</span>
+                      )}
+                      {status !== 'on-track' && days != null && (
+                        <span style={{ color: statusColor, fontWeight: 600, marginLeft: 4 }}>
+                          · {days < 0 ? `${Math.abs(days)}d overdue` : `${days}d left`}
+                        </span>
+                      )}
+                      {fpw != null && (
+                        <div style={{ color: '#374151', marginTop: 2 }}>
+                          Need{' '}
+                          <span style={{ fontWeight: 700, color: statusColor }}>
+                            {fpw.toFixed(1)} flight{fpw === 1 ? '' : 's'}/week
+                          </span>
+                          {' '}to hit that.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </StatCard>
 
           {isInstructor && (
@@ -462,6 +626,22 @@ export default function StudentDetail({
                 <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3 }}>
                   {Math.round(bp || 0)}% of ${progress.flatRate.toLocaleString()} used
                 </div>
+                {/* Running over/under across all STARTED lessons — same
+                    value as the Totals row at the bottom of the lesson
+                    table, summed lesson-by-lesson as the student flies. */}
+                {runningOverUnder != null && (() => {
+                  const color = runningOverUnder > 0 ? '#b45309' : runningOverUnder < 0 ? '#15803d' : '#6b7280'
+                  return (
+                    <div style={{ fontSize: 11, marginTop: 4, color }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {runningOverUnder >= 0 ? '+' : ''}{runningOverUnder.toFixed(1)}h
+                      </span>
+                      <span style={{ color: '#9ca3af' }}>
+                        {' '}running over/under
+                      </span>
+                    </div>
+                  )
+                })()}
               </StatCard>
             ) : (
               <StatCard label="School" value={student.school} valueSize={14} />
@@ -526,7 +706,8 @@ export default function StudentDetail({
             <span style={{ textAlign: 'center', paddingLeft: 16 }} title="Actual minus target — amber if over, green if under">Over/Under</span>
             <span style={{ textAlign: 'center' }}>Ground</span>
             <span style={{ textAlign: 'center' }}>Objectives</span>
-            <span style={{ textAlign: 'center' }}>Date</span>
+            <span style={{ textAlign: 'center' }} title="Planned completion date — auto-spread between training start and the effective deadline">Target</span>
+            <span style={{ textAlign: 'center' }} title="Actual completion date">Actual</span>
             <span style={{ textAlign: 'center' }}>Status</span>
           </div>
 
@@ -806,7 +987,29 @@ export default function StudentDetail({
                   {isCombinedPrimary ? `${lesson.o} · ${siblingDef.o}` : lesson.o}
                 </span>
 
-                {/* Date cell — inline editable for instructors */}
+                {/* Target Date cell — auto-spread from training start →
+                    deadline. Coloured amber when the actual completion
+                    landed after the target; green when on/before. Empty
+                    "—" until a pace or FSC date defines a deadline. */}
+                {(() => {
+                  const baseId = key.split('__r')[0].split('__s')[0]
+                  const target = targetDates[baseId]
+                  if (!target) {
+                    return <span style={{ textAlign: 'center', fontSize: 11, color: '#d1d5db' }}>—</span>
+                  }
+                  const shortTarget = new Date(target + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
+                  let color = '#6b7280'
+                  if (lg.date) {
+                    color = lg.date <= target ? '#15803d' : '#b45309'   // green if hit, amber if late
+                  }
+                  return (
+                    <span style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color }} title={`Target: ${target}`}>
+                      {shortTarget}
+                    </span>
+                  )
+                })()}
+
+                {/* Actual Date cell — inline editable for instructors */}
                 <span
                   style={{ textAlign: 'center', fontSize: 11, color: '#6b7280', cursor: isInstructor && Object.keys(lg).length > 0 ? 'pointer' : 'default' }}
                   onClick={(e) => {
@@ -827,7 +1030,9 @@ export default function StudentDetail({
                     />
                   ) : (
                     <span>
-                      {lg.date || '—'}
+                      {lg.date
+                        ? new Date(lg.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
+                        : '—'}
                       {isInstructor && Object.keys(lg).length > 0 && (
                         <span style={{ marginLeft: 4, color: '#d1d5db', fontSize: 10 }}>✏</span>
                       )}
@@ -930,6 +1135,7 @@ export default function StudentDetail({
                   {anyDiff ? `${overUnderTot > 0 ? '+' : ''}${overUnderTot.toFixed(1)}` : '—'}
                 </span>
                 <TotalCell logged={totGround} rec={targetGnd} />
+                <span />
                 <span />
                 <span />
                 <span style={{ textAlign: 'center' }}>{progress.completed}/{progress.total}</span>

@@ -95,3 +95,33 @@ export const LU_STANDARD_AIRCRAFT = {
   'Multi Engine':             'PA-30',
   'Multi Engine Instructor':  'PA-30',
 }
+
+/**
+ * Liberty University Online academic calendar — relevant subterms only.
+ *   • J term is never used by AA students (skipped here)
+ *   • C term is skipped (also not used by AA)
+ *   • A term = full ~17-week semester pace
+ *   • B term = first ~8 weeks (students doubling up enroll for D next)
+ *   • D term = second ~8 weeks
+ *
+ * Hard deadline rule: B-term students must have ALL flight lessons for
+ * their course complete by 2 weeks before D term starts, so the next
+ * course's training has time to begin. See LU_DOUBLEUP_BUFFER_DAYS.
+ *
+ * Dates are ISO yyyy-mm-dd. Update this list each academic year.
+ */
+export const LU_TERMS = [
+  { semester: 'Fall 2025',   subterm: 'A', start: '2025-08-18', end: '2025-12-12' },
+  { semester: 'Fall 2025',   subterm: 'B', start: '2025-08-18', end: '2025-10-10' },
+  { semester: 'Fall 2025',   subterm: 'D', start: '2025-10-20', end: '2025-12-12' },
+  { semester: 'Spring 2026', subterm: 'A', start: '2026-01-12', end: '2026-05-15' },
+  { semester: 'Spring 2026', subterm: 'B', start: '2026-01-12', end: '2026-03-13' },
+  { semester: 'Spring 2026', subterm: 'D', start: '2026-03-16', end: '2026-05-15' },
+  { semester: 'Summer 2026', subterm: 'A', start: '2026-05-18', end: '2026-08-21' },
+  { semester: 'Summer 2026', subterm: 'B', start: '2026-05-18', end: '2026-07-10' },
+  { semester: 'Summer 2026', subterm: 'D', start: '2026-06-29', end: '2026-08-21' },
+]
+
+/** Buffer (in days) before the D-term start date that B-term flight
+ *  lessons must wrap up by. Per AA policy: 2 weeks. */
+export const LU_DOUBLEUP_BUFFER_DAYS = 14
