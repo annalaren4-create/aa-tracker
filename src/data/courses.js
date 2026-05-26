@@ -243,6 +243,30 @@ export const COURSES = {
 export const COURSE_NAMES = Object.keys(COURSES)
 
 /**
+ * Default "what comes next" progression after a student finishes a course.
+ * First entry in each array is the most common next step; additional entries
+ * are common alternatives surfaced in the dropdown.
+ *
+ * Typical AA / Liberty track:
+ *   Private 1 → Private 2 → Instrument → Commercial 1 → 2 → 3 → CFI → CFII
+ * Common variants:
+ *   - Some students slot Multi Engine in after Commercial 3 (before CFI)
+ *   - Some go MEI after Multi Engine instead of CFII
+ */
+export const NEXT_COURSE_OPTIONS = {
+  'Private 1':                ['Private 2'],
+  'Private 2':                ['Instrument'],
+  'Instrument':               ['Commercial 1'],
+  'Commercial 1':             ['Commercial 2'],
+  'Commercial 2':             ['Commercial 3'],
+  'Commercial 3':             ['CFI', 'Multi Engine'],
+  'CFI':                      ['CFII'],
+  'CFII':                     ['Multi Engine', 'Multi Engine Instructor'],
+  'Multi Engine':             ['CFI', 'CFII', 'Multi Engine Instructor'],
+  'Multi Engine Instructor':  [],
+}
+
+/**
  * Older syllabus versions. Keyed by "<course>:<version>".
  * A student's `courseHistory[i].syllabusVersion` field can reference one of
  * these so a historical course renders against the syllabus that was in

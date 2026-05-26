@@ -414,6 +414,18 @@ export default function App() {
     })
   }
 
+  // Wipe ALL logs for a single course on a student (used by the
+  // "Remove syllabus" button on StudentDetail — irreversible).
+  const clearAllLogsForCourse = (studentId, course) => {
+    setLogs((prev) => {
+      const studentLogs = { ...(prev[studentId] || {}) }
+      delete studentLogs[course]
+      const next = { ...prev, [studentId]: studentLogs }
+      lsSet('logs', next)
+      return next
+    })
+  }
+
   /* ── shared helpers ──────────────────────────────────────────── */
   const calc = (student, courseOverride) => calcProgress(student, logs, instructors, courseOverride)
 
@@ -574,6 +586,7 @@ export default function App() {
       onUpdateAccount={handleUpdateAccount}
       onLogFlight={logFlight}
       onClearLesson={clearLesson}
+      onClearAllLogs={clearAllLogsForCourse}
       onUpdateStudent={updateStudent}
       onSaveTrainingReview={saveTrainingReview}
       onBack={() => {

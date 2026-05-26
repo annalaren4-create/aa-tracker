@@ -15,20 +15,24 @@ export function getTerm(pace) {
 
 /**
  * Hard flight-completion deadline implied by the chosen pace (term).
- *   A term → A end date
- *   B term → D start date − LU_DOUBLEUP_BUFFER_DAYS (always; assumes the
- *     student is doubling up into D, which is the whole point of B)
- *   D term → D end date
+ *   A term (regular)     → A end date
+ *   A term (accelerated) → D start date − LU_DOUBLEUP_BUFFER_DAYS
+ *                          (student plans to pick up a D-term course
+ *                          next, so the A course must wrap with the
+ *                          school's 2-week buffer)
+ *   D term               → D end date
  *
- * Returns an ISO yyyy-mm-dd string, or null if the pace is missing /
- * doesn't resolve.
+ * `accelerated` is true when the caller wants the doubleup buffer rule
+ * applied to an A-term pace. Pass `student.accelerated` from the caller.
+ *
+ * Returns ISO yyyy-mm-dd or null when the pace doesn't resolve.
  */
-export function flightDeadline(pace) {
+export function flightDeadline(pace, accelerated = false) {
   const term = getTerm(pace)
   if (!term) return null
-  if (term.subterm === 'B') {
+  if (term.subterm === 'A' && accelerated) {
     const dTerm = LU_TERMS.find((t) => t.semester === pace.semester && t.subterm === 'D')
-    if (!dTerm) return term.end                            // no D in this semester → fall back to B end
+    if (!dTerm) return term.end                            // no D in this semester → fall back to A end
     const d = new Date(dTerm.start + 'T00:00:00')
     d.setDate(d.getDate() - LU_DOUBLEUP_BUFFER_DAYS)
     return d.toISOString().slice(0, 10)
@@ -55,7 +59,7 @@ export function effectiveDeadline(student, courseHasFsc = true) {
     if (student.scheduledFsc) return student.scheduledFsc
     if (student.backupFsc)    return student.backupFsc
   }
-  return flightDeadline(student.pace)
+  return flightDeadline(student.pace, student.accelerated)
 }
 
 /**
@@ -123,10 +127,12 @@ export function flightsPerWeek(student, progress, courseHasFsc = true, today = n
   return Math.round((remaining / weeks) * 10) / 10
 }
 
-/** Active + future terms only — what should appear in the pace picker. */
+/** Active + future terms only — what should appear in the pace picker.
+ *  Filters out B (and any non-A/D subterm) since AA students only
+ *  enroll in A or D under the current Liberty calendar setup. */
 export function selectableTerms(today = new Date()) {
   const cutoff = today.toISOString().slice(0, 10)
-  return LU_TERMS.filter((t) => t.end >= cutoff)
+  return LU_TERMS.filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= cutoff)
 }
 
 /**
@@ -151,15 +157,27 @@ export function selectableTerms(today = new Date()) {
  * doesn't reshuffle every time something is logged (matches the paper
  * sheets where targets are set once at the start of the course).
  */
-export function targetDatesForCourse(lessons, sLogs, deadlineIso, today = new Date()) {
+export function targetDatesForCourse(lessons, sLogs, deadlineIso, today = new Date(), termStartIso = null) {
   if (!deadlineIso || !lessons || lessons.length === 0) return {}
   const todayIso = today.toISOString().slice(0, 10)
 
-  // Anchor = earliest log date in this course, else today.
+  // Anchor — when the student's per-lesson schedule should start spreading from:
+  //   1. Earliest log date in this course, if they've already flown. Once
+  //      they've started, the schedule locks to their actual start.
+  //   2. Otherwise the term start date if it's in the future (D-term
+  //      students whose term hasn't begun yet shouldn't be told to fly
+  //      lessons retroactively).
+  //   3. Otherwise today (term already started but no flights logged).
   let anchorIso = todayIso
   if (sLogs) {
     const dates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean).sort()
-    if (dates.length) anchorIso = dates[0]
+    if (dates.length) {
+      anchorIso = dates[0]
+    } else if (termStartIso && termStartIso > todayIso) {
+      anchorIso = termStartIso
+    }
+  } else if (termStartIso && termStartIso > todayIso) {
+    anchorIso = termStartIso
   }
 
   const anchor   = new Date(anchorIso   + 'T00:00:00')
@@ -176,6 +194,58 @@ export function targetDatesForCourse(lessons, sLogs, deadlineIso, today = new Da
     map[lesson.id] = d.toISOString().slice(0, 10)
   })
   return map
+}
+
+/**
+ * Predict the next pace for a student who just completed their current
+ * course. The logic mirrors how AA students actually move through the
+ * Liberty calendar:
+ *
+ *   • A-term + accelerated, finished BEFORE deadline → same-semester D
+ *     (the whole point of accelerated A is to pick up D next)
+ *   • A-term + accelerated, MISSED deadline → next semester's A
+ *   • A-term (regular) → next semester's A
+ *   • D-term → next semester's A
+ *
+ * Returns `{ pace: { semester, subterm }, accelerated: false }` or null
+ * when we can't predict (e.g. next semester isn't in LU_TERMS yet).
+ */
+export function predictNextPace(student, today = new Date()) {
+  if (!student?.pace) return null
+  const currentTerm = getTerm(student.pace)
+  if (!currentTerm) return null
+
+  // A-term + accelerated → check whether they finished on time.
+  if (currentTerm.subterm === 'A' && student.accelerated) {
+    const deadline = flightDeadline(student.pace, true)         // accel deadline = D start − 14
+    const todayIso = today.toISOString().slice(0, 10)
+    if (deadline && todayIso <= deadline) {
+      // On time — pick up same-semester D.
+      const dTerm = LU_TERMS.find((t) => t.semester === currentTerm.semester && t.subterm === 'D')
+      if (dTerm) return { pace: { semester: dTerm.semester, subterm: 'D' }, accelerated: false }
+    }
+    // Missed the buffer — fall through to next-semester A.
+  }
+
+  // Default: roll forward to the next semester's A term.
+  const ordered = orderedSemesters()
+  const idx = ordered.indexOf(currentTerm.semester)
+  if (idx < 0 || idx >= ordered.length - 1) return null
+  const nextSemester = ordered[idx + 1]
+  const aTerm = LU_TERMS.find((t) => t.semester === nextSemester && t.subterm === 'A')
+  if (!aTerm) return null
+  return { pace: { semester: aTerm.semester, subterm: 'A' }, accelerated: false }
+}
+
+/** Chronological list of semester names (by A-term start date). */
+function orderedSemesters() {
+  const seen = new Set()
+  return LU_TERMS
+    .filter((t) => t.subterm === 'A')
+    .slice()
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((t) => t.semester)
+    .filter((s) => (seen.has(s) ? false : seen.add(s)))
 }
 
 /**
@@ -229,6 +299,8 @@ export function behindSchedule(student, course, sLogs, today = new Date()) {
  */
 export function activeTermForSubterm(subterm, today = new Date()) {
   if (!subterm) return null
+  // Only A and D are valid for AA students today (B was deprecated).
+  if (subterm !== 'A' && subterm !== 'D') return null
   const cutoff = today.toISOString().slice(0, 10)
   const candidates = LU_TERMS
     .filter((t) => t.subterm === subterm && t.end >= cutoff)

@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
-import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, instrRate } from '../data/constants'
+import { useState, useEffect } from 'react'
+import { COURSES, getCourseDef, syllabusVersionFor, NEXT_COURSE_OPTIONS } from '../data/courses'
+import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, LU_TERMS, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule } from '../utils/terms'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule, getTerm, predictNextPace } from '../utils/terms'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
@@ -13,13 +13,17 @@ import AccountSettingsModal from './modals/AccountSettingsModal'
 const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 76px 76px 64px'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onUpdateStudent, onSaveTrainingReview, onBack, calcProgress,
+  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onClearAllLogs, onUpdateStudent, onSaveTrainingReview, onBack, calcProgress,
 }) {
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
   const [showLegend, setShowLegend] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
+  const [nextCourseChoice,      setNextCourseChoice]      = useState('')   // course pick in "move to next" banner
+  const [nextSemesterChoice,    setNextSemesterChoice]    = useState('')   // semester override in same banner
+  const [nextTermChoice,        setNextTermChoice]        = useState('')   // 'A' or 'D' override
+  const [nextAcceleratedChoice, setNextAcceleratedChoice] = useState(null) // checkbox override (null = use predicted)
   // Course selector — defaults to the student's current/active course. When
   // switched to a past course (from courseHistory), the page renders that
   // course's logs read-only.
@@ -28,7 +32,10 @@ export default function StudentDetail({
   const canEdit = isInstructor && !isViewingPastCourse
   const [editingDate, setEditingDate] = useState(null)
   const [editingAircraft, setEditingAircraft] = useState(false)
+  const [editingCourse, setEditingCourse] = useState(false)
   const [editingPrimary, setEditingPrimary] = useState(false)
+  const [replaceCourseMode, setReplaceCourseMode] = useState(false)   // bottom "Replace syllabus" inline picker
+  const [replaceCourseChoice, setReplaceCourseChoice] = useState('')
   const [editingSecondary, setEditingSecondary] = useState(false)
 
   // Instructors at the same base as the student — used for the dropdowns
@@ -42,13 +49,41 @@ export default function StudentDetail({
   const course    = getCourseDef(viewCourse, viewSyllabusVersion)
   const sLogs     = (logs[student.id] || {})[viewCourse] || {}
   const progress  = calcProgress(student, viewCourse)  // calc fn signature is (student, courseOverride)
+
+  // Auto-archive: when the CURRENT course hits 100%, stamp it into
+  // courseHistory with today's date + the primary/secondary instructor
+  // at time of completion. Idempotent — won't double-archive if the
+  // entry is already there. Triggers only on the current course, not
+  // while viewing past courses.
+  useEffect(() => {
+    if (progress.pct < 100) return
+    if (viewCourse !== student.course) return
+    const already = (student.courseHistory || []).some((h) => h.course === student.course)
+    if (already) return
+    const today = new Date().toISOString().slice(0, 10)
+    onUpdateStudent?.(student.id, {
+      courseHistory: [
+        ...(student.courseHistory || []),
+        {
+          course: student.course,
+          completedDate: today,
+          primaryInstructor: student.primaryInstructor,
+          secondaryInstructor: student.secondaryInstructor,
+        },
+      ],
+    })
+  }, [progress.pct, viewCourse, student.course, student.id])
   // Per-lesson target dates — spread evenly between training start and the
   // effective deadline. Only meaningful when a deadline (pace or FSC) is
   // set; otherwise targetDates is {} and cells render "—".
   const _courseHasFsc = !!getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons?.some((l) => l.fsc)
   const _effectiveDl  = effectiveDeadline(student, _courseHasFsc)
   const _courseLessons = getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons || []
-  const targetDates   = targetDatesForCourse(_courseLessons, sLogs, _effectiveDl)
+  // Anchor the per-lesson schedule at the term start when it's in the
+  // future (e.g. a D-term student looking at their schedule before D
+  // begins). Otherwise targetDatesForCourse falls back to today.
+  const _termStart    = getTerm(student.pace)?.start || null
+  const targetDates   = targetDatesForCourse(_courseLessons, sLogs, _effectiveDl, undefined, _termStart)
   const acRate    = AIRCRAFT_RATES[student.aircraft] || 0
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
@@ -192,7 +227,55 @@ export default function StudentDetail({
           <div>
             <h1>{student.name}</h1>
             <small>
-              {viewCourse} · {COURSES[viewCourse]?.avia} · {student.base} ·{' '}
+              {/* Course name — click-to-edit for instructors/chiefs when
+                  viewing the CURRENT course. Lets them fix a wrong
+                  enrollment in seconds. Past courses (via the course
+                  selector) stay read-only since editing those would
+                  invalidate historical logs. */}
+              {canEdit && !isViewingPastCourse ? (
+                editingCourse ? (
+                  <select
+                    value={student.course}
+                    autoFocus
+                    onChange={(e) => {
+                      const next = e.target.value
+                      if (next !== student.course) {
+                        // Switching the current course: clear pace + FSC
+                        // dates because the new course gets its own
+                        // schedule. Existing logs under the old course
+                        // stay intact (auto-archive on 100% still works
+                        // if those logs would have hit that threshold).
+                        onUpdateStudent(student.id, {
+                          course: next,
+                          pace: null,
+                          accelerated: false,
+                          scheduledFsc: null,
+                          backupFsc: null,
+                        })
+                        setViewCourse(next)
+                      }
+                      setEditingCourse(false)
+                    }}
+                    onBlur={() => setEditingCourse(false)}
+                    style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff' }}
+                  >
+                    {Object.keys(COURSES).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span
+                    onClick={() => setEditingCourse(true)}
+                    style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
+                    title="Click to change course"
+                  >
+                    {viewCourse} ✏
+                  </span>
+                )
+              ) : (
+                viewCourse
+              )}
+              {' · '}{COURSES[viewCourse]?.avia} · {student.base} ·{' '}
               {isViewingPastCourse && <span style={{ background: 'rgba(255,255,255,.15)', padding: '1px 6px', borderRadius: 4, marginRight: 4 }}>past</span>}
               {isInstructor ? (
                 editingAircraft ? (
@@ -311,39 +394,186 @@ export default function StudentDetail({
               onChange={(e) => setViewCourse(e.target.value)}
               style={{ fontSize: 13, padding: '4px 8px', width: 'auto', borderRadius: 6 }}
             >
-              <option value={student.course}>{student.course} (current)</option>
-              {(student.courseHistory || []).map((h) => (
-                <option key={h.course} value={h.course}>
-                  {h.course} {h.completedDate ? `(completed ${h.completedDate})` : '(completed)'}
-                </option>
-              ))}
+              {/* Current course (auto-archived to history once it hits 100%,
+                  so we suppress that history entry below to avoid showing
+                  the same course twice in the dropdown). */}
+              {(() => {
+                const completedSelf = (student.courseHistory || []).find((h) => h.course === student.course)
+                return (
+                  <option value={student.course}>
+                    {student.course} (current{completedSelf ? ' · 100%' : ''})
+                  </option>
+                )
+              })()}
+              {(student.courseHistory || [])
+                .filter((h) => h.course !== student.course)
+                .map((h) => (
+                  <option key={h.course} value={h.course}>
+                    {h.course} {h.completedDate ? `(completed ${h.completedDate})` : '(completed)'}
+                  </option>
+                ))}
             </select>
             {isViewingPastCourse && (
               <span style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 12 }}>
                 Read-only · historical record
               </span>
             )}
-            {isInstructor && (
-              <button
-                className="btn btn-sm"
-                style={{ marginLeft: 'auto', fontSize: 11 }}
-                onClick={() => {
-                  const courseName = prompt('Course name (e.g. "Commercial 1"):')
-                  if (!courseName || !COURSES[courseName]) {
-                    if (courseName) alert(`Course "${courseName}" not found. Must match an entry in courses.js exactly.`)
-                    return
-                  }
-                  const completedDate = prompt('Completion date (YYYY-MM-DD), or leave blank:') || ''
-                  const newHist = [...(student.courseHistory || []), { course: courseName, completedDate }]
-                  onUpdateStudent(student.id, { courseHistory: newHist })
-                  setViewCourse(courseName)
-                }}
-              >
-                + Add completed course
-              </button>
-            )}
           </div>
         )}
+
+        {/* "Course complete — move to next" banner. Surfaces once the
+            current course hits 100%. Three picks:
+              • Next course (dropdown of typical next syllabuses)
+              • Next term (A or D of whatever semester is recommended)
+              • Accelerated flag (only meaningful for A — D is inherently
+                accelerated, so the toggle is hidden for D)
+            All three default to the predicted recommendation but can be
+            overridden before confirming. */}
+        {canEdit && progress.pct >= 100 && viewCourse === student.course && (() => {
+          const options = NEXT_COURSE_OPTIONS[student.course] || []
+          const completedSet = new Set((student.courseHistory || []).map((h) => h.course))
+          const availableOptions = options.filter((c) => !completedSet.has(c))
+          if (availableOptions.length === 0) return null
+
+          const nextCourse = nextCourseChoice || availableOptions[0]
+          const predicted = predictNextPace(student)        // null if no upcoming term in LU_TERMS
+
+          // Upcoming semesters the student could enroll in. Includes the
+          // predicted one plus any further-future semesters in LU_TERMS,
+          // so a student can deliberately push their next course out a
+          // semester or two if needed.
+          const todayIso = new Date().toISOString().slice(0, 10)
+          const upcomingSemesters = [...new Set(
+            LU_TERMS
+              .filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= todayIso)
+              .sort((a, b) => a.start.localeCompare(b.start))
+              .map((t) => t.semester)
+          )]
+          const chosenSemester = nextSemesterChoice || predicted?.pace.semester || upcomingSemesters[0] || ''
+          const semesterTerms = chosenSemester
+            ? LU_TERMS.filter((t) => t.semester === chosenSemester && (t.subterm === 'A' || t.subterm === 'D'))
+            : []
+          const defaultSubterm = predicted?.pace.subterm || (semesterTerms[0]?.subterm ?? 'A')
+          // If the user switched the semester away from the predicted one,
+          // ignore the predicted subterm and just default to A.
+          const baseSubterm = chosenSemester === predicted?.pace.semester ? defaultSubterm : 'A'
+          const chosenSubterm = nextTermChoice || baseSubterm
+          const chosenAccelerated = nextAcceleratedChoice ?? (predicted?.accelerated ?? false)
+
+          const wasAccelerated = student.pace?.subterm === 'A' && student.accelerated
+          const acceleratedDeadline = wasAccelerated ? flightDeadline(student.pace, true) : null
+          const finishedOnTime = wasAccelerated
+            ? (!acceleratedDeadline || new Date().toISOString().slice(0, 10) <= acceleratedDeadline)
+            : null
+
+          return (
+            <div
+              className="no-print"
+              style={{
+                marginBottom: 16, padding: '12px 16px', borderRadius: 8,
+                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
+                  ✓ {student.course} complete
+                </div>
+                <div style={{ fontSize: 12, color: '#15803d', marginTop: 2 }}>
+                  Pick where {student.name.split(' ')[0]} goes next:
+                </div>
+                {wasAccelerated && finishedOnTime === false && (
+                  <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                    Missed the {acceleratedDeadline} accelerated buffer — defaulting away from same-semester D.
+                  </div>
+                )}
+              </div>
+
+              {/* Course picker */}
+              <select
+                value={nextCourse}
+                onChange={(e) => setNextCourseChoice(e.target.value)}
+                style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
+              >
+                {availableOptions.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
+              {/* Semester picker — every upcoming semester on the
+                  Liberty calendar is selectable so students can push
+                  out a course if they need extra time. */}
+              {upcomingSemesters.length > 0 && (
+                <select
+                  value={chosenSemester}
+                  onChange={(e) => {
+                    setNextSemesterChoice(e.target.value)
+                    setNextTermChoice('')   // reset term + accel when semester changes
+                    setNextAcceleratedChoice(null)
+                  }}
+                  style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
+                  title="Semester"
+                >
+                  {upcomingSemesters.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Term picker — A or D within the chosen semester. */}
+              {semesterTerms.length > 0 && (
+                <select
+                  value={chosenSubterm}
+                  onChange={(e) => setNextTermChoice(e.target.value)}
+                  style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
+                  title={`Term within ${chosenSemester}`}
+                >
+                  {semesterTerms.map((t) => (
+                    <option key={t.subterm} value={t.subterm}>{t.subterm} term</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Accelerated toggle — only meaningful for A term picks. */}
+              {chosenSubterm === 'A' && (
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#15803d', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!chosenAccelerated}
+                    onChange={(e) => setNextAcceleratedChoice(e.target.checked)}
+                    style={{ width: 'auto' }}
+                  />
+                  Accelerated
+                </label>
+              )}
+
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const nextPace = chosenSemester
+                    ? { semester: chosenSemester, subterm: chosenSubterm }
+                    : null
+                  // D term is inherently accelerated; no flag stored for D.
+                  const isAcc = chosenSubterm === 'A' && !!chosenAccelerated
+                  onUpdateStudent(student.id, {
+                    course: nextCourse,
+                    pace: nextPace,
+                    accelerated: isAcc,
+                    scheduledFsc: null,
+                    backupFsc: null,
+                  })
+                  setNextCourseChoice('')
+                  setNextSemesterChoice('')
+                  setNextTermChoice('')
+                  setNextAcceleratedChoice(null)
+                  setViewCourse(nextCourse)
+                }}
+              >
+                Move to {nextCourse}{chosenSemester ? ` · ${chosenSubterm}${chosenSubterm === 'A' && chosenAccelerated ? '*' : ''}` : ''}
+              </button>
+            </div>
+          )
+        })()}
 
         {/* Instructor contact card — visible to students AND instructors */}
         {(() => {
@@ -551,68 +781,125 @@ export default function StudentDetail({
               const fpw = flightsPerWeek(student, progress, courseHasFsc)
               const statusColor = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'
               const fmtDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+              // D-term is accelerated by definition (8-week back-half of
+              // the semester) so we label it as such. A-term gets the
+              // accelerated tag only when the student explicitly toggled it.
+              const isAcceleratedPace = student.pace?.subterm === 'D'
+                || (student.pace?.subterm === 'A' && !!student.accelerated)
               const deadlineSource = courseHasFsc && student.scheduledFsc ? 'scheduled FSC'
                 : courseHasFsc && student.backupFsc ? 'backup FSC'
-                : student.pace      ? `${student.pace.semester} · ${student.pace.subterm} term`
+                : student.pace      ? `${student.pace.semester} · ${student.pace.subterm} term${isAcceleratedPace ? ' (accelerated)' : ''}`
                 : null
               return (
                 <div style={{ fontSize: 11, marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e5e7eb', display: 'grid', gap: 6 }}>
-                  {/* Row 1 — subterm picker (A / B / D). Semester is
-                      auto-resolved to the active or next-starting term
-                      for whichever subterm was chosen, so the user only
-                      has to answer one question. */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#6b7280' }}>Enrolled in:</span>
-                    {['A', 'B', 'D'].map((letter) => {
-                      const active = student.pace?.subterm === letter
-                      const previewTerm = activeTermForSubterm(letter)
-                      return (
-                        <button
-                          key={letter}
-                          type="button"
-                          onClick={() => {
-                            const term = activeTermForSubterm(letter)
-                            if (!term) return
-                            onUpdateStudent(student.id, {
-                              pace: { semester: term.semester, subterm: letter },
-                            })
-                          }}
-                          disabled={!previewTerm}
-                          title={previewTerm ? `${previewTerm.semester}` : 'No upcoming term defined'}
-                          style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 10px',
-                            border: `1px solid ${active ? '#1a3a5c' : '#d1d5db'}`,
-                            background: active ? '#1a3a5c' : '#fff',
-                            color: active ? '#fff' : (previewTerm ? '#374151' : '#d1d5db'),
-                            borderRadius: 4,
-                            cursor: previewTerm ? 'pointer' : 'not-allowed',
-                          }}
-                        >
-                          {letter} term
-                        </button>
-                      )
-                    })}
-                    {student.pace && (
-                      <button
-                        type="button"
-                        onClick={() => onUpdateStudent(student.id, { pace: null })}
-                        style={{ fontSize: 10, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
-                      >
-                        clear
-                      </button>
-                    )}
-                    {student.pace && (
-                      <span style={{ color: '#9ca3af' }}>
-                        ({student.pace.semester} — term cutoff {fmtDate(flightDeadline(student.pace))})
-                      </span>
-                    )}
-                  </div>
+                  {/* Row 1 — semester + subterm pickers. AA students only
+                      enroll in A or D; the Accelerated toggle is a sub-
+                      option under A (D is inherently accelerated). Both
+                      pickers default to the next upcoming term but a
+                      student / instructor can push a semester or switch
+                      A↔D at any time. */}
+                  {(() => {
+                    const todayIsoNow = new Date().toISOString().slice(0, 10)
+                    const allSemesters = [...new Set(
+                      LU_TERMS
+                        .filter((t) => (t.subterm === 'A' || t.subterm === 'D') && t.end >= todayIsoNow)
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((t) => t.semester)
+                    )]
+                    const activeSemester = student.pace?.semester || allSemesters[0] || ''
+                    const semesterHasA = LU_TERMS.some((t) => t.semester === activeSemester && t.subterm === 'A')
+                    const semesterHasD = LU_TERMS.some((t) => t.semester === activeSemester && t.subterm === 'D')
+                    return (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#6b7280', paddingTop: 4 }}>Enrolled in:</span>
+                        {allSemesters.length > 0 && (
+                          <select
+                            value={activeSemester}
+                            onChange={(e) => {
+                              const newSem = e.target.value
+                              // Preserve the currently-picked subterm if
+                              // the new semester offers it, else default
+                              // to A (every semester has A).
+                              const wantedSub = student.pace?.subterm || 'A'
+                              const hasWanted = LU_TERMS.some((t) => t.semester === newSem && t.subterm === wantedSub)
+                              const subterm = hasWanted ? wantedSub : 'A'
+                              onUpdateStudent(student.id, {
+                                pace: { semester: newSem, subterm },
+                                accelerated: false,
+                              })
+                            }}
+                            style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff' }}
+                          >
+                            {allSemesters.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        )}
+                        {['A', 'D'].map((letter) => {
+                          const active = student.pace?.subterm === letter && student.pace?.semester === activeSemester
+                          const available = letter === 'A' ? semesterHasA : semesterHasD
+                          return (
+                            <div key={letter} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!available) return
+                                  onUpdateStudent(student.id, {
+                                    pace: { semester: activeSemester, subterm: letter },
+                                    accelerated: false,
+                                  })
+                                }}
+                                disabled={!available}
+                                title={available ? `${activeSemester} · ${letter} term` : `No ${letter} term in ${activeSemester}`}
+                                style={{
+                                  fontSize: 11, fontWeight: 700, padding: '2px 10px',
+                                  border: `1px solid ${active ? '#1a3a5c' : '#d1d5db'}`,
+                                  background: active ? '#1a3a5c' : '#fff',
+                                  color: active ? '#fff' : (available ? '#374151' : '#d1d5db'),
+                                  borderRadius: 4,
+                                  cursor: available ? 'pointer' : 'not-allowed',
+                                }}
+                              >
+                                {letter} term
+                              </button>
+                              {letter === 'A' && active && (
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6b7280', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!student.accelerated}
+                                    onChange={(e) => onUpdateStudent(student.id, { accelerated: e.target.checked })}
+                                    style={{ width: 'auto' }}
+                                  />
+                                  Accelerated
+                                </label>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {student.pace && (
+                          <button
+                            type="button"
+                            onClick={() => onUpdateStudent(student.id, { pace: null, accelerated: false })}
+                            style={{ fontSize: 10, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                          >
+                            clear
+                          </button>
+                        )}
+                        {student.pace && (
+                          <span style={{ color: '#9ca3af' }}>
+                            (term cutoff {fmtDate(flightDeadline(student.pace, student.accelerated))})
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* Row 2 — scheduled + backup FSC date inputs. Only
                       shown for courses that actually include an FSC
                       lesson. Courses like Commercial 2 don't have one,
                       so the pacer relies purely on the term cutoff. */}
                   {courseHasFsc ? (
+                    <>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <label style={{ display: 'flex', gap: 4, alignItems: 'center', color: '#6b7280' }}>
                         Scheduled FSC:
@@ -633,6 +920,27 @@ export default function StudentDetail({
                         />
                       </label>
                     </div>
+                    {/* Buffer warning for accelerated A students — if the
+                        scheduled FSC is within 14 days of D term start,
+                        they won't have time to pick up a D-term course. */}
+                    {(() => {
+                      if (!student.accelerated) return null
+                      if (student.pace?.subterm !== 'A') return null
+                      const fsc = student.scheduledFsc || student.backupFsc
+                      if (!fsc) return null
+                      const dTerm = activeTermForSubterm('D')
+                      if (!dTerm || dTerm.semester !== student.pace.semester) return null
+                      const fscDate = new Date(fsc + 'T00:00:00')
+                      const dStart  = new Date(dTerm.start + 'T00:00:00')
+                      const daysBefore = (dStart - fscDate) / (1000 * 60 * 60 * 24)
+                      if (daysBefore >= 14) return null
+                      return (
+                        <div style={{ marginTop: 2, padding: '4px 8px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 4, color: '#92400e', fontSize: 11 }}>
+                          ⚠ This date is within 14 days of D term start ({dTerm.start}). The student won't have the required 2-week buffer to pick up a D-term course next.
+                        </div>
+                      )
+                    })()}
+                    </>
                   ) : (
                     <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
                       This course has no Final Stage Check — pacer uses the term cutoff.
@@ -1309,6 +1617,92 @@ export default function StudentDetail({
           })()}
         </div>
       </div>
+
+      {/* Replace syllabus — destructive footer action for fixing a wrong
+          course assignment. Inline picker: click "Replace this syllabus"
+          to reveal a dropdown of every course, pick the right one,
+          confirm — old course's logs are wiped, history entry removed,
+          student.course atomically swapped to the new course. */}
+      {canEdit && (
+        <div className="no-print" style={{ padding: '40px 16px 32px', maxWidth: 1280, margin: '0 auto', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+          {!replaceCourseMode ? (
+            <>
+              <button
+                className="btn btn-sm btn-danger"
+                onClick={() => {
+                  setReplaceCourseMode(true)
+                  // Default the dropdown to whatever else makes sense
+                  // (first course that isn't the current one).
+                  const other = Object.keys(COURSES).find((c) => c !== viewCourse) || ''
+                  setReplaceCourseChoice(other)
+                }}
+              >
+                Replace {viewCourse} syllabus
+              </button>
+              <div style={{ marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
+                Fixes a wrong course assignment — wipes all logs for {viewCourse}{(student.courseHistory || []).some((h) => h.course === viewCourse) ? ' and removes the course-history record' : ''}, then enrolls {student.name.split(' ')[0]} in the new course.
+              </div>
+            </>
+          ) : (
+            <div style={{
+              display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+              padding: '12px 18px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+            }}>
+              <span style={{ fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
+                Replace {viewCourse} with:
+              </span>
+              <select
+                value={replaceCourseChoice}
+                onChange={(e) => setReplaceCourseChoice(e.target.value)}
+                autoFocus
+                style={{ fontSize: 13, padding: '4px 8px', width: 'auto', borderRadius: 6, border: '1px solid #fca5a5' }}
+              >
+                {Object.keys(COURSES).filter((c) => c !== viewCourse).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <button
+                className="btn btn-sm btn-danger"
+                onClick={() => {
+                  if (!replaceCourseChoice) return
+                  const wasCurrent = viewCourse === student.course
+                  const inHistory = (student.courseHistory || []).some((h) => h.course === viewCourse)
+                  // Atomically: wipe old course's logs, drop its history
+                  // entry, swap student.course to the new pick, reset
+                  // pace + FSC dates (new course gets its own schedule).
+                  onClearAllLogs?.(student.id, viewCourse)
+                  const nextUpdates = {}
+                  if (inHistory) {
+                    nextUpdates.courseHistory = (student.courseHistory || []).filter((h) => h.course !== viewCourse)
+                  }
+                  if (wasCurrent) {
+                    nextUpdates.course = replaceCourseChoice
+                    nextUpdates.pace = null
+                    nextUpdates.accelerated = false
+                    nextUpdates.scheduledFsc = null
+                    nextUpdates.backupFsc = null
+                  }
+                  if (Object.keys(nextUpdates).length > 0) {
+                    onUpdateStudent(student.id, nextUpdates)
+                  }
+                  setViewCourse(replaceCourseChoice)
+                  setReplaceCourseMode(false)
+                  setReplaceCourseChoice('')
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              >
+                Confirm replace
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => { setReplaceCourseMode(false); setReplaceCourseChoice('') }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {ledgerMode && (
         <LedgerModal

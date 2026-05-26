@@ -111,15 +111,30 @@ export const LU_STANDARD_AIRCRAFT = {
  * Dates are ISO yyyy-mm-dd. Update this list each academic year.
  */
 export const LU_TERMS = [
+  // Fall 2025 (historical — kept for past-course views and any
+  // courseHistory entries still pointing here)
   { semester: 'Fall 2025',   subterm: 'A', start: '2025-08-18', end: '2025-12-12' },
-  { semester: 'Fall 2025',   subterm: 'B', start: '2025-08-18', end: '2025-10-10' },
   { semester: 'Fall 2025',   subterm: 'D', start: '2025-10-20', end: '2025-12-12' },
+
+  // Spring 2026
   { semester: 'Spring 2026', subterm: 'A', start: '2026-01-12', end: '2026-05-15' },
-  { semester: 'Spring 2026', subterm: 'B', start: '2026-01-12', end: '2026-03-13' },
   { semester: 'Spring 2026', subterm: 'D', start: '2026-03-16', end: '2026-05-15' },
+
+  // Summer 2026
   { semester: 'Summer 2026', subterm: 'A', start: '2026-05-18', end: '2026-08-21' },
-  { semester: 'Summer 2026', subterm: 'B', start: '2026-05-18', end: '2026-07-10' },
   { semester: 'Summer 2026', subterm: 'D', start: '2026-06-29', end: '2026-08-21' },
+
+  // Fall 2026
+  { semester: 'Fall 2026',   subterm: 'A', start: '2026-08-24', end: '2026-12-18' },
+  { semester: 'Fall 2026',   subterm: 'D', start: '2026-10-26', end: '2026-12-18' },
+
+  // Spring 2027
+  { semester: 'Spring 2027', subterm: 'A', start: '2027-01-18', end: '2027-05-14' },
+  { semester: 'Spring 2027', subterm: 'D', start: '2027-03-22', end: '2027-05-14' },
+
+  // Summer 2027
+  { semester: 'Summer 2027', subterm: 'A', start: '2027-05-17', end: '2027-08-20' },
+  { semester: 'Summer 2027', subterm: 'D', start: '2027-06-28', end: '2027-08-20' },
 ]
 
 /** Buffer (in days) before the D-term start date that B-term flight

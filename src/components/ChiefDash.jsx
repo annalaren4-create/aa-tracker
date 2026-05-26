@@ -746,10 +746,16 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
           const fpw = flightsPerWeek(student, p, courseHasFsc)
           const color = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'
           const shortDate = new Date(dl + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
-          // Source tag: FSC scheduled / backup, otherwise the term subterm
+          // Source tag: FSC scheduled / backup, otherwise the term subterm.
+          // D term is always accelerated by definition; A term gets the
+          // accelerated * suffix only when the student toggled it.
+          const isAccelPace = student.pace?.subterm === 'D'
+            || (student.pace?.subterm === 'A' && !!student.accelerated)
           const src = courseHasFsc && student.scheduledFsc ? 'FSC'
             : courseHasFsc && student.backupFsc ? 'bkup'
-            : (student.pace?.subterm || '')
+            : student.pace?.subterm
+              ? `${student.pace.subterm}${isAccelPace ? '*' : ''}`
+              : ''
           return (
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color, lineHeight: 1.2 }}>{shortDate}</div>
