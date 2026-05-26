@@ -68,6 +68,14 @@ export default function InstructorDash({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Primary action first — the most common header tap. */}
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => setShowAdd(true)}
+          >
+            + Add student
+          </button>
+          {/* Secondary day-to-day actions */}
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>
             Instructors
           </button>
@@ -76,15 +84,10 @@ export default function InstructorDash({
             onClick={() => setShowBlankTR(true)}
             title="Open a fresh Training Review form (no student data pre-filled)"
           >
-            Blank Training Review
+            Blank TR
           </button>
-          <button
-            className="btn btn-sm"
-            style={{ background: '#2d6ab4', color: '#fff', border: 'none' }}
-            onClick={() => setShowAdd(true)}
-          >
-            + Add student
-          </button>
+          {/* Visual separator before low-frequency account actions */}
+          <span style={{ width: 1, height: 22, background: 'rgba(255,255,255,.2)' }} />
           {account && (
             <button className="btn btn-sm btn-ghost" onClick={() => setShowAcctSettings(true)}>
               Account
@@ -114,10 +117,15 @@ export default function InstructorDash({
       {/* Student list */}
       <div style={{ padding: 16, maxWidth: 900, margin: '0 auto' }}>
         {locationStudents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
-            <p>No students at {activeLocation} yet</p>
-            <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setShowAdd(true)}>
-              Add first student
+          <div style={{ textAlign: 'center', padding: '56px 24px', color: '#6b7280' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+              No students at {activeLocation} yet
+            </div>
+            <p style={{ fontSize: 13, marginTop: 0, maxWidth: 380, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+              Add a student to start tracking flights, costs, and Liberty funding from this location.
+            </p>
+            <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowAdd(true)}>
+              + Add first student
             </button>
           </div>
         ) : (

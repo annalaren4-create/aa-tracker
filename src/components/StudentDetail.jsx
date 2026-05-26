@@ -325,7 +325,7 @@ export default function StudentDetail({
             )}
             {isInstructor && (
               <button
-                className="btn btn-sm btn-ghost"
+                className="btn btn-sm"
                 style={{ marginLeft: 'auto', fontSize: 11 }}
                 onClick={() => {
                   const courseName = prompt('Course name (e.g. "Commercial 1"):')

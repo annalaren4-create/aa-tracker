@@ -19,7 +19,12 @@ export function getAccounts() {
 
 export function checkLogin(username, password) {
   const accounts = getAccounts()
-  return accounts.find((a) => a.username === username && a.hash === encode(password)) || null
+  const u = (username || '').trim().toLowerCase()
+  // Usernames are case-insensitive — registering as "Anna.H" lets you
+  // sign in as "anna.h" or "ANNA.H". Passwords stay exact-match.
+  return accounts.find(
+    (a) => (a.username || '').toLowerCase() === u && a.hash === encode(password)
+  ) || null
 }
 
 export function registerAccount({ name, username, password, role, roleLabel, studentId = null }) {

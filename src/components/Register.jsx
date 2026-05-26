@@ -233,86 +233,118 @@ export default function Register({ students, instructors = [], calcProgress, onA
   }
 
   return (
-    <div>
-      <div className="header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => {
-              // Role-aware back navigation — the forward flow skips step 3
-              // (student-record lookup) for non-student roles, so Back from
-              // step 4 has to skip it the same way going backwards.
-              if (step === 1) { onBack(); return }
-              // Going back to step 1 = the user wants to start over.
-              // Reset any downstream state from a previous attempt so the
-              // next role pick doesn't inherit a stale Linked-to label,
-              // username, role, or error.
-              if (step === 2) {
-                setRole('')
-                setRoleLabel('')
-                setStudentRecord(null)
-                setSearch('')
-                setUsername('')
-                setError('')
-                setCreateMode(false)
-                setStep(1)
-                return
-              }
-              if (step === 3 && createMode) { setCreateMode(false); return }
-              if (step === 4) {
-                // Back from password-step lands on whichever step came before:
-                //   - student → step 3 (find-record search)
-                //   - instructor/chief WITH roster matches → step 3 ("is this you?")
-                //   - instructor/chief WITHOUT matches → step 2 (role select)
-                const skippedStep3 = role !== 'student' && !hasInstructorMatchStep
-                setStep(skippedStep3 ? 2 : 3)
-                return
-              }
-              setStep(step - 1)
-            }}
-          >← Back</button>
-          <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
-          <h1>Create Account</h1>
-        </div>
-        <small>KHEF · KRMN · KHWY · KOKV · KJYO</small>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'linear-gradient(180deg, #e8eef5 0%, #f8fafc 35%, #ffffff 100%)',
+    }}>
+      {/* Slim back row */}
+      <div style={{ padding: '14px 16px' }}>
+        <button
+          className="btn btn-sm"
+          onClick={() => {
+            // Role-aware back navigation — the forward flow skips step 3
+            // (student-record lookup) for non-student roles, so Back from
+            // step 4 has to skip it the same way going backwards.
+            if (step === 1) { onBack(); return }
+            // Going back to step 1 = the user wants to start over.
+            // Reset any downstream state from a previous attempt so the
+            // next role pick doesn't inherit a stale Linked-to label,
+            // username, role, or error.
+            if (step === 2) {
+              setRole('')
+              setRoleLabel('')
+              setStudentRecord(null)
+              setSearch('')
+              setUsername('')
+              setError('')
+              setCreateMode(false)
+              setStep(1)
+              return
+            }
+            if (step === 3 && createMode) { setCreateMode(false); return }
+            if (step === 4) {
+              // Back from password-step lands on whichever step came before:
+              //   - student → step 3 (find-record search)
+              //   - instructor/chief WITH roster matches → step 3 ("is this you?")
+              //   - instructor/chief WITHOUT matches → step 2 (role select)
+              const skippedStep3 = role !== 'student' && !hasInstructorMatchStep
+              setStep(skippedStep3 ? 2 : 3)
+              return
+            }
+            setStep(step - 1)
+          }}
+        >← Back</button>
       </div>
 
-      <div style={{ padding: '40px 20px', maxWidth: 480, margin: '0 auto' }}>
-
-        {/* Step indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 28 }}>
-          {Array.from({ length: totalSteps || 3 }).map((_, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600,
-                background: i + 1 <= stepDisplay ? '#1a3a5c' : '#e5e7eb',
-                color: i + 1 <= stepDisplay ? '#fff' : '#9ca3af',
-              }}>
-                {i + 1}
-              </div>
-              {i < (totalSteps || 3) - 1 && (
-                <div style={{ width: 32, height: 2, background: i + 1 < stepDisplay ? '#1a3a5c' : '#e5e7eb' }} />
-              )}
-            </div>
-          ))}
+      <div style={{ flex: 1, padding: '8px 20px 40px', maxWidth: 500, margin: '0 auto', width: '100%' }}>
+        {/* Logo over the wizard so the page feels branded but not heavy. */}
+        <div style={{ textAlign: 'center', marginBottom: 18 }}>
+          <img
+            src="/aviation-adventures-logo.png"
+            alt="Aviation Adventures"
+            style={{ maxWidth: 180, width: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
+          />
+          <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Create your account
+          </div>
         </div>
 
-        <div className="card" style={{ padding: '28px 24px' }}>
+        {/* Step indicator — compact pills with optional labels for each step.
+            Numbered circles still convey position; the label underneath
+            tells the user what's coming. */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 4, marginBottom: 22 }}>
+          {Array.from({ length: totalSteps || 3 }).map((_, i) => {
+            const labels = role === 'student'
+              ? ['Name', 'Role', 'Find record', 'Password']
+              : (hasInstructorMatchStep ? ['Name', 'Role', 'Confirm', 'Password'] : ['Name', 'Role', 'Password'])
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 64 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
+                    background: i + 1 <= stepDisplay ? '#1a3a5c' : '#e5e7eb',
+                    color: i + 1 <= stepDisplay ? '#fff' : '#9ca3af',
+                  }}>
+                    {i + 1}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 500, color: i + 1 <= stepDisplay ? '#1a3a5c' : '#9ca3af', textAlign: 'center' }}>
+                    {labels[i]}
+                  </span>
+                </div>
+                {i < (totalSteps || 3) - 1 && (
+                  <div style={{ width: 24, height: 2, marginTop: 11, background: i + 1 < stepDisplay ? '#1a3a5c' : '#e5e7eb' }} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: 12,
+            padding: '28px 24px',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+          }}
+        >
 
           {/* Step 1 — Name */}
           {step === 1 && (
             <form onSubmit={handleNameNext}>
               <div style={{ textAlign: 'center', marginBottom: 24 }}>
                 <h2 style={{ marginTop: 10, fontSize: 18, fontWeight: 600 }}>What is your name?</h2>
-                <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Enter your full name as it appears in the system</p>
+                <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Use your full legal name — it'll be matched against the school's roster.</p>
               </div>
               <div style={{ marginBottom: 20 }}>
                 <label>Full name</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Anna Herrington"
+                  placeholder="First Last"
                   autoFocus
                   required
                 />
@@ -612,6 +644,10 @@ export default function Register({ students, instructors = [], calcProgress, onA
           )}
         </div>
       </div>
+
+      <footer style={{ textAlign: 'center', padding: '14px 20px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
+        Aviation Adventures · KHEF · KRMN · KHWY · KOKV · KJYO
+      </footer>
     </div>
   )
 }

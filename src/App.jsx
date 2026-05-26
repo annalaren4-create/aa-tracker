@@ -425,11 +425,20 @@ export default function App() {
   /* ── auth ────────────────────────────────────────────────────── */
   const handleLoginSuccess = (account) => {
     setCurrentAccount(account)
+    // Auto-select the location tab on sign-in based on the logged-in
+    // user's home base. We look up the instructor roster entry by name
+    // (eqName-tolerant — case and nickname differences) and use their
+    // base if found. For chiefs without a roster entry (e.g. the seed
+    // admin) we fall back to 'All' so they still see everyone.
+    const rosterEntry = instructors.find((i) =>
+      i.name && account.name && i.name.trim().toLowerCase() === account.name.trim().toLowerCase()
+    )
+    const homeBase = rosterEntry?.base
     if (account.role === 'chief') {
-      setActiveLocation('All')
+      setActiveLocation(homeBase || 'All')
       setView('chief')
     } else if (account.role === 'instructor') {
-      setActiveLocation('KHEF')
+      setActiveLocation(homeBase || 'KHEF')
       setView('dash')
     } else {
       // student role

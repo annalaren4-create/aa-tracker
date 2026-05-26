@@ -61,6 +61,7 @@ export default function ChiefDash({
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
   const [showBlankTR,      setShowBlankTR]      = useState(false)
+  const [chipFilter,       setChipFilter]       = useState(null)   // 'behind' | 'inactive' | 'fscSoon' | null
   const [courseFilter, setCourseFilter]     = useState('All')
   const [search, setSearch]                 = useState('')
   const [sortCol, setSortCol]               = useState('name')
@@ -68,16 +69,57 @@ export default function ChiefDash({
 
   const tabs = [ALL, ...LOCATIONS]
 
-  // Aggregate stats
-  const totalStudents  = students.length
-  const avgProgress    = totalStudents > 0
-    ? Math.round(students.reduce((sum, s) => sum + calcProgress(s).pct, 0) / totalStudents)
-    : 0
-  const activeCourses  = [...new Set(students.map((s) => s.course))].length
+  // Aggregate stats. Total is scoped to the active location tab so the
+  // header strip reflects whichever base the chief is currently looking
+  // at. On the "All" tab it's the school-wide roster size.
   const locationCounts = LOCATIONS.reduce((acc, loc) => {
     acc[loc] = students.filter((s) => s.base === loc).length
     return acc
   }, {})
+  const totalStudents  = activeLocation === ALL
+    ? students.length
+    : (locationCounts[activeLocation] || 0)
+
+  // Actionable signals chiefs want at-a-glance:
+  //  • Falling behind — any uncompleted lesson 10+ days past its target
+  //  • Inactive       — no logged flight in 10+ days (stalled training)
+  //  • FSC soon       — scheduled or backup FSC date in the next 10 days
+  // Counts are scoped to the active location tab — switching from "All"
+  // to KHEF, for example, narrows the chips to the KHEF roster.
+  const todayMs = Date.now()
+  const tenDaysMs = 10 * 24 * 60 * 60 * 1000
+  let behindCount = 0
+  let inactiveCount = 0
+  let fscSoonCount = 0
+  const locationScoped = activeLocation === ALL
+    ? students
+    : students.filter((s) => s.base === activeLocation)
+  locationScoped.forEach((s) => {
+    const courseDef = COURSES[s.course]
+    const sLogs = (logs[s.id] || {})[s.course] || {}
+
+    // Falling behind
+    if (behindSchedule(s, courseDef, sLogs).behind) behindCount++
+
+    // Inactive — find latest log date; if > 10 days ago, count it. Skip
+    // students whose course is already done (pct 100).
+    const p = calcProgress(s)
+    if (p.pct < 100) {
+      const allDates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean)
+      if (allDates.length) {
+        const latest = allDates.sort().slice(-1)[0]
+        const ageMs = todayMs - new Date(latest + 'T00:00:00').getTime()
+        if (ageMs > tenDaysMs) inactiveCount++
+      }
+    }
+
+    // FSC scheduled in the next 10 days (scheduled or backup)
+    const fscIso = s.scheduledFsc || s.backupFsc
+    if (fscIso) {
+      const diff = new Date(fscIso + 'T00:00:00').getTime() - todayMs
+      if (diff >= 0 && diff <= tenDaysMs) fscSoonCount++
+    }
+  })
 
   // Budget pace summary (all students)
   const allPaces = students.map((s) => getBudgetPace(calcProgress(s)))
@@ -95,10 +137,39 @@ export default function ChiefDash({
     else { setSortCol(col); setSortDir(1) }
   }
 
+  // Chip filter — one of null, 'behind', 'inactive', 'fscSoon'. Drives
+  // the actionable-stats chip click behavior: clicking a chip restricts
+  // the student table to just the matching cohort; clicking the same
+  // chip again clears the filter.
+  const matchesChip = (s) => {
+    if (!chipFilter) return true
+    const courseDef = COURSES[s.course]
+    const sLogs = (logs[s.id] || {})[s.course] || {}
+    if (chipFilter === 'behind') {
+      return behindSchedule(s, courseDef, sLogs).behind
+    }
+    if (chipFilter === 'inactive') {
+      const p = calcProgress(s)
+      if (p.pct >= 100) return false
+      const dates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean)
+      if (!dates.length) return false
+      const latest = dates.sort().slice(-1)[0]
+      return (todayMs - new Date(latest + 'T00:00:00').getTime()) > tenDaysMs
+    }
+    if (chipFilter === 'fscSoon') {
+      const fscIso = s.scheduledFsc || s.backupFsc
+      if (!fscIso) return false
+      const diff = new Date(fscIso + 'T00:00:00').getTime() - todayMs
+      return diff >= 0 && diff <= tenDaysMs
+    }
+    return true
+  }
+
   const filtered = students
     .filter((s) => activeLocation === ALL || s.base === activeLocation)
     .filter((s) => courseFilter === 'All' || s.course === courseFilter)
     .filter((s) => !search.trim() || s.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(matchesChip)
 
   // If the logged-in chief is also an instructor, float their own primary students
   // to the top of the list, then their secondaries, then everyone else. Their
@@ -171,21 +242,24 @@ export default function ChiefDash({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Primary action — adding a student is the most common header action */}
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => setShowAdd(true)}
+          >
+            + Add student
+          </button>
+          {/* Secondary day-to-day actions */}
           <button className="btn btn-sm btn-ghost" onClick={() => setShowManageInstr(true)}>Instructors</button>
           <button
             className="btn btn-sm btn-ghost"
             onClick={() => setShowBlankTR(true)}
             title="Open a fresh Training Review form (no student data pre-filled) in case the original wasn't saved"
           >
-            Blank Training Review
+            Blank TR
           </button>
-          <button
-            className="btn btn-sm"
-            style={{ background: '#2d6ab4', color: '#fff', border: 'none' }}
-            onClick={() => setShowAdd(true)}
-          >
-            + Add student
-          </button>
+          {/* Visual separator before the low-frequency account actions */}
+          <span style={{ width: 1, height: 22, background: 'rgba(255,255,255,.2)' }} />
           {account && (
             <button className="btn btn-sm btn-ghost" onClick={() => setShowAcctSettings(true)}>Account</button>
           )}
@@ -197,15 +271,38 @@ export default function ChiefDash({
       <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
         <div style={{ maxWidth: 1300, margin: '0 auto', display: 'flex', gap: 0, alignItems: 'stretch', flexWrap: 'wrap' }}>
 
-          {/* Quick stats */}
+          {/* Action-oriented signals — the things a chief wants to spot
+              in the first 5 seconds. Total stays for context; the three
+              alert chips are clickable to filter the student table to
+              just the matching cohort. Click the same chip again to
+              clear. Chips with a zero count are not clickable. */}
           <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap', flex: 1, paddingRight: 24, borderRight: '1px solid #e5e7eb' }}>
             <MiniStat label="Total" value={totalStudents} />
-            <MiniStat label="Avg Progress" value={`${avgProgress}%`} />
-            <MiniStat label="Courses" value={activeCourses} />
             <div style={{ width: 1, height: 32, background: '#e5e7eb', margin: '0 4px' }} />
-            {LOCATIONS.map((loc) => (
-              <MiniStat key={loc} label={loc} value={locationCounts[loc] || 0} small />
-            ))}
+            <MiniStat
+              label="Falling Behind"
+              value={behindCount}
+              valueColor={behindCount > 0 ? '#b91c1c' : '#9ca3af'}
+              active={chipFilter === 'behind'}
+              activeColor="#b91c1c"
+              onClick={behindCount > 0 ? () => setChipFilter((f) => f === 'behind' ? null : 'behind') : null}
+            />
+            <MiniStat
+              label="Inactive 10+ days"
+              value={inactiveCount}
+              valueColor={inactiveCount > 0 ? '#b45309' : '#9ca3af'}
+              active={chipFilter === 'inactive'}
+              activeColor="#b45309"
+              onClick={inactiveCount > 0 ? () => setChipFilter((f) => f === 'inactive' ? null : 'inactive') : null}
+            />
+            <MiniStat
+              label="FSC Next 10 days"
+              value={fscSoonCount}
+              valueColor={fscSoonCount > 0 ? '#1d4ed8' : '#9ca3af'}
+              active={chipFilter === 'fscSoon'}
+              activeColor="#1d4ed8"
+              onClick={fscSoonCount > 0 ? () => setChipFilter((f) => f === 'fscSoon' ? null : 'fscSoon') : null}
+            />
           </div>
 
           {/* Budget Pace Bar Chart */}
@@ -245,7 +342,7 @@ export default function ChiefDash({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search students…"
-              style={{ paddingLeft: 28, height: 30, fontSize: 13 }}
+              style={{ height: 30, fontSize: 13 }}
             />
           </div>
           <select
@@ -265,12 +362,28 @@ export default function ChiefDash({
       {/* ── Compact Student Table ─────────────────────────────────── */}
       <div style={{ maxWidth: 1300, margin: '0 auto', padding: '6px 16px 32px' }}>
         {visibleStudents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 48, color: '#6b7280' }}>
-            <p>{students.length === 0 ? 'No students yet — add the first one!' : 'No students match your filters'}</p>
-            {students.length === 0 && (
-              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setShowAdd(true)}>
-                Add first student
-              </button>
+          <div style={{ textAlign: 'center', padding: '56px 24px', color: '#6b7280' }}>
+            {students.length === 0 ? (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                  No students yet
+                </div>
+                <p style={{ fontSize: 13, marginTop: 0, maxWidth: 400, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+                  Add your first student to start tracking flight progress, costs, and Liberty funding.
+                </p>
+                <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowAdd(true)}>
+                  + Add first student
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                  No students match your filters
+                </div>
+                <p style={{ fontSize: 13, marginTop: 0, maxWidth: 400, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+                  Try clearing the search box, switching tabs, or clicking an active stat chip to remove its filter.
+                </p>
+              </>
             )}
           </div>
         ) : (
@@ -415,11 +528,29 @@ function ChartBar({ label, count, max, color }) {
   )
 }
 
-function MiniStat({ label, value, small }) {
+function MiniStat({ label, value, small, valueColor, onClick, active, activeColor }) {
+  const clickable = !!onClick
   return (
-    <div>
-      <div style={{ fontSize: 9, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: small ? 16 : 20, fontWeight: 700, color: '#1a3a5c', lineHeight: 1.1 }}>{value}</div>
+    <div
+      onClick={onClick || undefined}
+      title={clickable
+        ? (active ? 'Click to clear filter' : 'Click to filter the table')
+        : undefined}
+      style={{
+        padding: clickable ? '4px 10px' : 0,
+        margin: clickable ? '-4px -10px' : 0,
+        borderRadius: 6,
+        cursor: clickable ? 'pointer' : 'default',
+        // Subtle highlight when this chip is the active filter
+        background: active ? `${activeColor || '#1a3a5c'}10` : 'transparent',
+        outline: active ? `1.5px solid ${activeColor || '#1a3a5c'}` : 'none',
+        transition: 'background 0.12s, outline 0.12s',
+      }}
+    >
+      <div style={{ fontSize: 9, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}{active && <span style={{ marginLeft: 6, color: activeColor || '#1a3a5c' }}>✕</span>}
+      </div>
+      <div style={{ fontSize: small ? 16 : 20, fontWeight: 700, color: valueColor || '#1a3a5c', lineHeight: 1.1 }}>{value}</div>
     </div>
   )
 }
@@ -659,8 +790,21 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
         )}
       </div>
 
-      {/* Actions: remove from dashboard (light) · delete account (hard) */}
-      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
+      {/* Actions: hidden until the row is hovered so the table reads
+          calmly when scanning. Both buttons are destructive — chiefs
+          rarely use them — so we keep them out of sight until needed. */}
+      <div
+        style={{
+          textAlign: 'right',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
+          alignItems: 'flex-end',
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity .15s',
+          pointerEvents: hovered ? 'auto' : 'none',
+        }}
+      >
         <button
           className="btn btn-sm"
           style={{ fontSize: 10, padding: '2px 6px', minWidth: 0, color: '#6b7280', lineHeight: 1.1 }}
