@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES } from '../../data/constants'
 import { eqName } from '../../utils/storage'
+import { useToast } from '../Toast'
 
 /**
  * Simplified flight log:
@@ -15,6 +16,7 @@ import { eqName } from '../../utils/storage'
  *   per-lesson; they're considered met by completing the lesson per the syllabus.
  */
 export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCombined = false, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, defaultAircraft, onSave, onClear, onClose }) {
+  const toast = useToast()
   const hasExisting = existing && Object.keys(existing).length > 0
 
   // Targets from the lesson definition. When the user opts to combine with a
@@ -71,12 +73,6 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
     paidOop:     existing.paidOop     || false,
     notes:       existing.notes       || '',
   })
-  // If the prefilled instructor name doesn't match any roster entry (e.g. the
-  // logged-in user registered as a name that isn't on the instructor list yet),
-  // start in custom-text mode with their name already typed instead of showing
-  // an empty "— select instructor —" dropdown.
-  const matchesRoster = instructors.some((i) => eqName(i.name, rawInitialInstructor))
-  const [customInstr, setCustomInstr] = useState(!!rawInitialInstructor && !matchesRoster)
   const [repeatAgainChecked, setRepeatAgainChecked] = useState(false)
   const [saveErr, setSaveErr] = useState('')
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -212,31 +208,20 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
               </div>
               <div>
                 <label>Instructor</label>
-                {!hasInstructors || customInstr ? (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      value={form.instructor}
-                      onChange={(e) => set('instructor', e.target.value)}
-                      placeholder="Printed name"
-                      style={{ flex: 1 }}
-                    />
-                    {hasInstructors && (
-                      <button className="btn btn-sm" onClick={() => { setCustomInstr(false); set('instructor', '') }}>☰</button>
-                    )}
-                  </div>
+                {hasInstructors ? (
+                  <select
+                    value={form.instructor}
+                    onChange={(e) => set('instructor', e.target.value)}
+                    style={{ width: '100%', textAlign: 'center', textAlignLast: 'center' }}
+                  >
+                    <option value="">— select instructor —</option>
+                    {instructors.map((i) => (
+                      <option key={i.name} value={i.name}>{i.name}</option>
+                    ))}
+                  </select>
                 ) : (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <select
-                      value={form.instructor}
-                      onChange={(e) => set('instructor', e.target.value)}
-                      style={{ flex: 1, textAlign: 'center', textAlignLast: 'center' }}
-                    >
-                      <option value="">— select instructor —</option>
-                      {instructors.map((i) => (
-                        <option key={i.name} value={i.name}>{i.name}</option>
-                      ))}
-                    </select>
-                    <button className="btn btn-sm" onClick={() => { setCustomInstr(true); set('instructor', '') }}>✏</button>
+                  <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic', padding: '6px 0' }}>
+                    No instructors on the roster yet.
                   </div>
                 )}
               </div>
@@ -321,15 +306,15 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                 if (isRepeatAttempt) {
                   if (isFinalStageCheck) {
                     return [
-                      ['completed',   'Completed ✓'],
+                      ['completed',   'Completed'],
                       ['repeatedOop', 'Unsuccessful'],
                       ['incomplete',  'Incomplete'],
                     ]
                   }
-                  return [['completed', 'Completed ✓'], ['incomplete', 'Incomplete']]
+                  return [['completed', 'Completed'], ['incomplete', 'Incomplete']]
                 }
                 const opts = [
-                  ['completed',   'Completed ✓', false],
+                  ['completed',   'Completed', false],
                   ['repeatedLib', 'Repeat (Lib)',
                     lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere],
                 ]
@@ -341,7 +326,17 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                   opts.push(['incomplete',  'Incomplete',   false])
                 }
                 return opts
-              })().map(([k, label, disabled = false]) => (
+              })().map(([k, label, disabled = false]) => {
+                // Why-disabled message, used by the (i) tooltip on greyed-out
+                // status checkboxes (e.g. why "Repeat (Lib)" can't be picked).
+                // The "no flight time yet" reason is intentionally omitted —
+                // it's self-evident from the empty Flight time field above.
+                const reason = disabled && k === 'repeatedLib'
+                  ? (lesson.sc || lesson.fsc || lesson.pc)
+                    ? 'Stage check / progress check repeats must be Out of Pocket'
+                    : 'Liberty funds only one repeat per course — this must be OOP'
+                  : ''
+                return (
                 <label
                   key={k}
                   style={{
@@ -349,20 +344,6 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     fontSize: 13, opacity: disabled ? 0.45 : 1,
                   }}
-                  title={
-                    disabled && (k === 'repeatedLib' || k === 'repeatedOop')
-                      ? ((parseFloat(form.flight) || 0) === 0 &&
-                         (parseFloat(form.dualHrs) || 0) === 0 &&
-                         (parseFloat(form.soloHrs) || 0) === 0 &&
-                         !existing.completed && !existing.dual && !existing.solo && !existing.sim && !existing.ground)
-                        ? 'Enter flight time first — Repeat is only available after an attempt is recorded'
-                        : k === 'repeatedLib'
-                          ? (lesson.sc || lesson.fsc || lesson.pc)
-                            ? 'Stage check / progress check repeats must be Out of Pocket'
-                            : 'Liberty funds only one repeat per course — this must be OOP'
-                          : undefined
-                      : undefined
-                  }
                 >
                   <input
                     type="checkbox"
@@ -390,8 +371,10 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     style={{ width: 'auto' }}
                   />
                   {label}
+                  {reason && <DisabledReasonHint reason={reason} />}
                 </label>
-              ))}
+                )
+              })}
               {/* On a Final Stage Check repeat, the Unsuccessful checkbox
                   already spawns the next __rN OOP repeat row, so showing a
                   separate "Repeat again" toggle would be redundant. */}
@@ -416,11 +399,9 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                 </label>
               )}
             </div>
-            {!isRepeatAttempt && (lesson.sc || lesson.fsc || lesson.pc || libRepeatUsedElsewhere) && (
+            {!isRepeatAttempt && (lesson.sc || lesson.fsc || lesson.pc) && (
               <div style={{ fontSize: 11, color: '#7f1d1d', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 8px' }}>
-                {(lesson.sc || lesson.fsc || lesson.pc)
-                  ? `${lesson.fsc ? 'Final stage check' : lesson.sc ? 'Stage check' : 'Progress check'}: any repeat must be Out of Pocket and a Training Review is required.`
-                  : 'A Liberty-funded repeat is already used on another lesson — any further repeats must be Out of Pocket.'}
+                {lesson.fsc ? 'Final stage check' : lesson.sc ? 'Stage check' : 'Progress check'}: any repeat must be Out of Pocket and a Training Review is required.
               </div>
             )}
 
@@ -488,8 +469,8 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
             <button
               className="btn"
               style={{ color: '#dc2626', marginRight: 'auto' }}
-              onClick={() => {
-                if (!hasExisting || confirm(`Remove this repeat attempt for lesson ${lesson.id}?`)) {
+              onClick={async () => {
+                if (!hasExisting || await toast.confirm(`Remove this repeat attempt for lesson ${lesson.id}?`)) {
                   onClear()
                 }
               }}
@@ -501,8 +482,8 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
               <button
                 className="btn"
                 style={{ color: '#dc2626', marginRight: 'auto' }}
-                onClick={() => {
-                  if (confirm(`Clear all logged hours for lesson ${lesson.id}? The lesson will reset to "pending".`)) {
+                onClick={async () => {
+                  if (await toast.confirm(`Clear all logged hours for lesson ${lesson.id}? The lesson will reset to "pending".`)) {
                     onClear()
                   }
                 }}
@@ -529,5 +510,44 @@ function ReqStat({ label, value }) {
         {value.toFixed(1)}
       </span>
     </div>
+  )
+}
+
+/**
+ * Tiny info icon shown next to a disabled status checkbox. Hovering it
+ * pops up a styled tooltip explaining why the checkbox cannot be picked
+ * (e.g. "Liberty funds only one repeat per course — this must be OOP").
+ * The bubble appears immediately (unlike the native browser title delay)
+ * and styles consistently with the legend tooltip elsewhere in the app.
+ */
+function DisabledReasonHint({ reason }) {
+  const [show, setShow] = useState(false)
+  return (
+    <span
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 2, cursor: 'help' }}
+      aria-label={reason}
+    >
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 14, height: 14, borderRadius: '50%',
+        background: '#e5e7eb', color: '#6b7280',
+        fontSize: 9, fontWeight: 700,
+      }}>i</span>
+      {show && (
+        <span style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%) translateY(-6px)',
+          background: '#1f2937', color: '#fff',
+          padding: '6px 10px', borderRadius: 6,
+          fontSize: 11, fontWeight: 400, lineHeight: 1.4,
+          whiteSpace: 'normal', width: 220, textAlign: 'center',
+          zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,.18)',
+          pointerEvents: 'none',
+        }}>
+          {reason}
+        </span>
+      )}
+    </span>
   )
 }

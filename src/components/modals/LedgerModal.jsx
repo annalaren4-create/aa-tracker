@@ -1,6 +1,7 @@
 import { COURSES, getCourseDef, syllabusVersionFor } from '../../data/courses'
 import { AIRCRAFT_RATES, SIM_RATE, GROUND_RATE, FSC_INSTR_RATE, LU_FLAT_RATES, LU_STANDARD_AIRCRAFT, LU_FUNDED_REPEATS_PER_COURSE, instrRate } from '../../data/constants'
 import { repeatKeysFor } from '../../utils/calculations'
+import { parseIsoDate } from '../../utils/terms'
 
 /**
  * Drill-down view for any of the student-detail stat tiles. Shows a chronological
@@ -167,10 +168,40 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
       ? (LU_FLAT_RATES[activeCourse] || 0)
       : 0
   }
+  const startingBalance = running
+
+  // Totals for the footer row
+  const totals = displayRows.reduce((acc, r) => {
+    acc.dual          += r.dual
+    acc.solo          += r.solo
+    acc.sim           += r.sim
+    acc.ground        += r.ground
+    acc.totalHours    += r.totalHours
+    acc.aircraftCost  += r.isOop ? 0 : r.aircraftCost
+    acc.instructorCost+= r.isOop ? 0 : r.instructorCost
+    acc.simDeviceCost += r.isOop ? 0 : r.simDeviceCost
+    acc.groundCost    += r.isOop ? 0 : r.groundCost
+    const oopAmt = r.isOop ? r.luLessonCost + r.aircraftSurcharge : r.aircraftSurcharge
+    acc.oopTotal      += oopAmt
+    acc.lessonTotal   += r.isOop ? 0 : r.totalCost
+    acc.luLessonTotal += r.isOop ? 0 : r.luLessonCost
+    return acc
+  }, { dual:0, solo:0, sim:0, ground:0, totalHours:0, aircraftCost:0, instructorCost:0, simDeviceCost:0, groundCost:0, oopTotal:0, lessonTotal:0, luLessonTotal:0 })
+
+  // Numeric date used by every row — "04/12" (no year, since the ledger
+  // already filters by course). Numeric MM/DD beats "Apr 12" in a dense
+  // table where every column is competing for width.
+  const fmtDate = (iso) => {
+    const d = parseIsoDate(iso)
+    if (!d) return '—'
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${mm}/${dd}`
+  }
 
   return (
     <div className="overlay">
-      <div className="modal" style={{ maxWidth: 880 }}>
+      <div className="modal ledger-modal" style={{ maxWidth: 880 }}>
         <div className="modal-header">
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 500 }}>{title}</h2>
@@ -181,7 +212,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
               )}
             </div>
           </div>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm no-print" onClick={onClose}>✕</button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -222,7 +253,7 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map((r) => {
+                {displayRows.map((r, rowIdx) => {
                   // Running cost and Balance only reflect what LU is billed
                   // (i.e. excluding the OOP aircraft surcharge — that lives in
                   // its own column — AND skipping rows the student paid OOP,
@@ -233,8 +264,14 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                   // surcharges across all displayed rows.
                   if (mode === 'oop') running += (r.isOop ? r.luLessonCost : 0) + r.aircraftSurcharge
                   return (
-                    <tr key={r.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={td}>{r.date || '—'}</td>
+                    <tr
+                      key={r.key}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        background: rowIdx % 2 === 1 ? '#fafbfc' : 'transparent',
+                      }}
+                    >
+                      <td style={td}>{fmtDate(r.date)}</td>
                       <td style={td}>
                         {r.repeatIdx !== null ? <span style={{ color: '#dc2626' }}>↻ </span> : null}
                         <span style={{ fontStyle: r.isEnrollment ? 'italic' : 'normal', color: r.isEnrollment ? '#6b7280' : undefined }}>
@@ -298,12 +335,59 @@ export default function LedgerModal({ student, logs, instructors, mode = 'hours'
                   )
                 })}
               </tbody>
+              <tfoot>
+                <tr style={{ background: '#e5e7eb', borderTop: '2px solid #1a3a5c' }}>
+                  <td style={tdFoot} colSpan={4}>TOTALS</td>
+                  {mode === 'hours' && (<>
+                    <td style={tdFootRight}>{totals.dual > 0 ? totals.dual.toFixed(1) : '—'}</td>
+                    <td style={tdFootRight}>{totals.solo > 0 ? totals.solo.toFixed(1) : '—'}</td>
+                    <td style={tdFootRight}>{totals.sim > 0 ? totals.sim.toFixed(1) : '—'}</td>
+                    <td style={tdFootRight}>{totals.ground > 0 ? totals.ground.toFixed(1) : '—'}</td>
+                    <td style={tdFootRight}>{totals.totalHours > 0 ? totals.totalHours.toFixed(1) : '—'}</td>
+                  </>)}
+                  {mode === 'oop' && (<>
+                    <td style={tdFootRight} />
+                    <td style={tdFootRight} />
+                    <td style={{ ...tdFootRight, color: '#b45309' }}>
+                      ${Math.round(running).toLocaleString()}
+                    </td>
+                  </>)}
+                  {(mode === 'cost' || mode === 'balance') && (<>
+                    <td style={tdFootRight}>{totals.aircraftCost > 0 ? `$${Math.round(totals.aircraftCost).toLocaleString()}` : '—'}</td>
+                    <td style={tdFootRight}>{totals.instructorCost > 0 ? `$${Math.round(totals.instructorCost).toLocaleString()}` : '—'}</td>
+                    <td style={tdFootRight}>{totals.simDeviceCost > 0 ? `$${Math.round(totals.simDeviceCost).toLocaleString()}` : '—'}</td>
+                    <td style={tdFootRight}>{totals.groundCost > 0 ? `$${Math.round(totals.groundCost).toLocaleString()}` : '—'}</td>
+                    <td style={{ ...tdFootRight, color: totals.oopTotal > 0 ? '#b45309' : undefined }}>
+                      {totals.oopTotal > 0 ? `+$${Math.round(totals.oopTotal).toLocaleString()}` : '—'}
+                    </td>
+                    <td style={tdFootRight}>${Math.round(totals.lessonTotal).toLocaleString()}</td>
+                    {mode === 'cost' && (
+                      <td style={{ ...tdFootRight, color: '#1a3a5c' }}>
+                        ${Math.round(running).toLocaleString()}
+                      </td>
+                    )}
+                    {mode === 'balance' && (
+                      <td style={{ ...tdFootRight, color: running >= 0 ? '#15803d' : '#dc2626' }}>
+                        ${Math.round(running).toLocaleString()}
+                      </td>
+                    )}
+                  </>)}
+                </tr>
+                {mode === 'balance' && startingBalance > 0 && (
+                  <tr>
+                    <td colSpan={99} style={{ padding: '6px 8px', fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+                      Starting LU flat-rate balance: ${startingBalance.toLocaleString()} · subtract LU-billed lesson costs to get remaining balance.
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
             </table>
           )}
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer no-print">
           <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn-primary" onClick={() => window.print()}>Print</button>
         </div>
       </div>
     </div>
@@ -314,3 +398,5 @@ const th = { textAlign: 'left', padding: '6px 8px', fontSize: 10, color: '#6b728
 const thRight = { ...th, textAlign: 'right' }
 const td = { padding: '6px 8px', color: '#111827' }
 const tdRight = { ...td, textAlign: 'right' }
+const tdFoot = { padding: '10px 8px', color: '#1f2937', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const tdFootRight = { ...tdFoot, textAlign: 'right', fontWeight: 700 }

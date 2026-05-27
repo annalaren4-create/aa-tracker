@@ -1,8 +1,20 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { LOCATIONS, SCHOOLS, AIRCRAFT_LIST, AIRCRAFT_RATES, LU_FLAT_RATES, instrRate } from '../../data/constants'
 import { COURSES, COURSE_NAMES } from '../../data/courses'
+import { selectableTerms } from '../../utils/terms'
+import { useToast } from '../Toast'
 
 export default function AddStudentModal({ instructors, activeLocation, onAdd, onClose }) {
+  const toast = useToast()
+  // Default the pace to the soonest A term that hasn't ended yet
+  const upcomingTerms = useMemo(() => selectableTerms(new Date()), [])
+  const upcomingSemesters = useMemo(
+    () => Array.from(new Set(upcomingTerms.map((t) => t.semester))),
+    [upcomingTerms]
+  )
+  const defaultSemester = upcomingSemesters[0] || ''
+  const defaultSubterm = upcomingTerms.find((t) => t.semester === defaultSemester && t.subterm === 'A') ? 'A' : 'D'
+
   const [form, setForm] = useState({
     name: '',
     school: 'Liberty University',
@@ -11,18 +23,17 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
     primaryInstructor: '',
     secondaryInstructor: '',
     base: activeLocation || 'KHEF',
+    pace: { semester: defaultSemester, subterm: defaultSubterm },
+    accelerated: false,
   })
-  const [customPrimary, setCustomPrimary] = useState(false)
-  const [customSecondary, setCustomSecondary] = useState(false)
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   // Show only instructors at the student's current base
   const baseInstructors = instructors.filter((i) => !i.base || i.base === form.base)
-  const hasInstructors = baseInstructors.length > 0
 
   const submit = () => {
-    if (!form.name.trim()) return alert('Student name is required')
-    if (!form.primaryInstructor) return alert('Primary instructor is required')
+    if (!form.name.trim()) return toast.error('Student name is required')
+    if (!form.primaryInstructor) return toast.error('Primary instructor is required')
     onAdd({ ...form, name: form.name.trim() })
   }
 
@@ -43,7 +54,7 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
               <input
                 value={form.name}
                 onChange={(e) => set('name', e.target.value)}
-                placeholder="e.g. Adam Medina"
+                placeholder="First Last"
               />
             </div>
 
@@ -102,8 +113,6 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
                 value={form.primaryInstructor}
                 onChange={(v) => set('primaryInstructor', v)}
                 instructors={baseInstructors}
-                custom={customPrimary}
-                setCustom={setCustomPrimary}
               />
             </div>
 
@@ -114,15 +123,70 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
                 value={form.secondaryInstructor}
                 onChange={(v) => set('secondaryInstructor', v)}
                 instructors={baseInstructors}
-                custom={customSecondary}
-                setCustom={setCustomSecondary}
               />
+            </div>
+
+            <div className="divider" />
+
+            {/* Pace (semester + A/D + accelerated) */}
+            <div>
+              <label>Pace</label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={form.pace.semester}
+                  onChange={(e) => {
+                    const sem = e.target.value
+                    const sub = upcomingTerms.find((t) => t.semester === sem && t.subterm === form.pace.subterm)
+                      ? form.pace.subterm
+                      : (upcomingTerms.find((t) => t.semester === sem && t.subterm === 'A') ? 'A' : 'D')
+                    setForm((f) => ({
+                      ...f,
+                      pace: { semester: sem, subterm: sub },
+                      accelerated: sub === 'A' ? f.accelerated : false,
+                    }))
+                  }}
+                  style={{ flex: '1 1 auto', minWidth: 160 }}
+                >
+                  {upcomingSemesters.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {['A', 'D'].map((sub) => {
+                  const exists = upcomingTerms.some((t) => t.semester === form.pace.semester && t.subterm === sub)
+                  const active = form.pace.subterm === sub
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      disabled={!exists}
+                      className={`btn btn-sm ${active ? 'btn-primary' : ''}`}
+                      onClick={() => setForm((f) => ({
+                        ...f,
+                        pace: { ...f.pace, subterm: sub },
+                        accelerated: sub === 'A' ? f.accelerated : false,
+                      }))}
+                    >
+                      {sub} term
+                    </button>
+                  )
+                })}
+              </div>
+              {form.pace.subterm === 'A' && (
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, color: '#374151', fontWeight: 400, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.accelerated}
+                    onChange={(e) => set('accelerated', e.target.checked)}
+                    style={{ width: 'auto', margin: 0, padding: 0 }}
+                  />
+                  Accelerated (finish A in time to start D)
+                </label>
+              )}
             </div>
 
             {/* LU info box */}
             {form.school === 'Liberty University' && (
               <div className="info-box">
-               &nbsp;
                 <b>LU flat rate: ${(LU_FLAT_RATES[form.course] || 0).toLocaleString()}</b>
                 {' · '}{COURSES[form.course]?.avia}
                 {' · '}Aircraft ${AIRCRAFT_RATES[form.aircraft] || 0}/hr
@@ -141,38 +205,20 @@ export default function AddStudentModal({ instructors, activeLocation, onAdd, on
   )
 }
 
-function InstructorSelect({ value, onChange, instructors, custom, setCustom }) {
-  const hasInstructors = instructors.length > 0
-
-  if (!hasInstructors || custom) {
+function InstructorSelect({ value, onChange, instructors }) {
+  if (instructors.length === 0) {
     return (
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Type full name"
-          style={{ flex: 1 }}
-        />
-        {hasInstructors && (
-          <button className="btn btn-sm" title="Use dropdown" onClick={() => { setCustom(false); onChange('') }}>
-            ☰
-          </button>
-        )}
+      <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic', padding: '6px 0' }}>
+        No instructors at this base yet — add one via "Manage instructors" first.
       </div>
     )
   }
-
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }}>
-        <option value="">— select instructor —</option>
-        {instructors.map((i) => (
-          <option key={i.name} value={i.name}>{i.name}  ({i.cert})</option>
-        ))}
-      </select>
-      <button className="btn btn-sm" title="Type instead" onClick={() => { setCustom(true); onChange('') }}>
-        ✏
-      </button>
-    </div>
+    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: '100%' }}>
+      <option value="">— select instructor —</option>
+      {instructors.map((i) => (
+        <option key={i.name} value={i.name}>{i.name}  ({i.cert})</option>
+      ))}
+    </select>
   )
 }

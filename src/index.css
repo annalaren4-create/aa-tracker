@@ -119,6 +119,12 @@ input, select, textarea {
   font-size: 13px;
   font-family: inherit;
 }
+/* Checkboxes/radios shouldn't inherit the form-input width/padding —
+   otherwise they stretch across their parent and pad themselves tall. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto;
+  padding: 0;
+}
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--aa-red);
@@ -302,12 +308,15 @@ label {
 .sig-line { border-bottom: 1px solid #111827; height: 28px; }
 .sig-label { font-size: 11px; color: #374151; margin-top: 4px; }
 
-/* Print styles — for printing a student's progress sheet */
+/* Print styles. Three flows:
+     1. No modal open       → prints the StudentDetail page (landscape)
+     2. .tr-modal open      → prints just the Training Review form
+     3. .ledger-modal open  → prints just the ledger table */
 .print-only { display: none; }
 @media print {
   @page { size: letter landscape; margin: 0.4in; }
-  body { background: #fff; }
-  .no-print { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  .no-print, .no-print * { display: none !important; }
   .print-only { display: block; }
   .print-header {
     padding: 0 0 8px 0;
@@ -318,15 +327,21 @@ label {
   .card { box-shadow: none !important; border: 1px solid #d1d5db; }
   .stat-card { box-shadow: none !important; border: 1px solid #d1d5db; break-inside: avoid; }
   .grid2, .grid4 { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; }
-  /* Keep the syllabus from breaking awkwardly across pages */
+  /* Keep cards / tables from breaking awkwardly across pages */
   .card > div { break-inside: avoid; }
+  table { break-inside: auto; }
+  tr    { break-inside: avoid; break-after: auto; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
 
-  /* When the Training Review modal is open, print ONLY its contents */
-  body:has(.tr-modal) > * { visibility: hidden; }
-  body:has(.tr-modal) .overlay,
-  body:has(.tr-modal) .overlay * { visibility: visible; }
+  /* Buttons never print — even if a button isn't tagged no-print, a
+     paper copy with clickable controls makes no sense. */
+  .btn { display: none !important; }
+
+  /* ── Training Review modal: isolated to the form ────────────────── */
+  body:has(.tr-modal) > *:not(.overlay) { display: none !important; }
   body:has(.tr-modal) .overlay {
-    position: absolute; top: 0; left: 0; right: 0;
+    position: static !important;
     background: #fff !important; padding: 0 !important;
     display: block !important;
   }
@@ -340,4 +355,26 @@ label {
     border-radius: 0 !important; padding: 2px 4px !important;
     background: transparent !important;
   }
+  body:has(.tr-modal) .modal-header,
+  body:has(.tr-modal) .modal-footer { display: none !important; }
+
+  /* ── Ledger modal: full-width audit-trail table ─────────────────── */
+  body:has(.ledger-modal) > *:not(.overlay) { display: none !important; }
+  body:has(.ledger-modal) .overlay {
+    position: static !important;
+    background: #fff !important; padding: 0 !important;
+    display: block !important;
+  }
+  body:has(.ledger-modal) .modal.ledger-modal {
+    box-shadow: none !important; border: none !important;
+    max-width: none !important; width: 100% !important;
+    max-height: none !important;
+  }
+  body:has(.ledger-modal) .modal-body {
+    max-height: none !important; overflow: visible !important;
+  }
+  body:has(.ledger-modal) .modal-footer { display: none !important; }
+  body:has(.ledger-modal) table { width: 100%; border-collapse: collapse; }
+  body:has(.ledger-modal) thead tr,
+  body:has(.ledger-modal) tfoot tr { background: #f3f4f6 !important; }
 }

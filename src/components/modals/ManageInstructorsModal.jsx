@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { LOCATIONS, INSTRUCTOR_CERTS } from '../../data/constants'
 import { eqName } from '../../utils/storage'
+import { useToast } from '../Toast'
 
 export default function ManageInstructorsModal({
   instructors, onAdd, onDelete, onUpdate, onClose, activeLocation, myName, isChief = false,
   roleRequests = [], onSubmitRoleRequest, onResolveRoleRequest,
 }) {
+  const toast = useToast()
   // Default the base filter to the LOGGED-IN instructor's own base, falling back
   // to the dashboard's active location, then to 'All'. So when Bob Hepp (KHEF)
   // opens this modal, he immediately sees the KHEF roster.
@@ -17,6 +19,7 @@ export default function ManageInstructorsModal({
   const [cert, setCert]   = useState('CFI')
   const [base, setBase]   = useState(defaultBase)
   const [filter, setFilter] = useState(myBaseInit || (activeLocation && activeLocation !== 'All' ? activeLocation : 'All'))
+  const [search, setSearch] = useState('')
 
   // Inline edit state: { name, base } of the row being edited, plus draft values
   const [editing, setEditing] = useState(null)
@@ -62,15 +65,15 @@ export default function ManageInstructorsModal({
   const handleAdd = () => {
     if (!name.trim()) return
     if (instructors.find((i) => i.name === name.trim() && i.base === base)) {
-      return alert(`${name.trim()} is already listed at ${base}`)
+      return toast.error(`${name.trim()} is already listed at ${base}`)
     }
     onAdd({ name: name.trim(), cert, base })
     setName('')
   }
 
-  const visible = filter === 'All'
-    ? instructors
-    : instructors.filter((i) => i.base === filter)
+  const q = search.trim().toLowerCase()
+  const visible = (filter === 'All' ? instructors : instructors.filter((i) => i.base === filter))
+    .filter((i) => !q || i.name.toLowerCase().includes(q))
 
   // Float the logged-in instructor's own record(s) to the top of each base group
   // so they see themselves first when opening the modal.
@@ -89,9 +92,8 @@ export default function ManageInstructorsModal({
   // Reorder the base sections so the logged-in instructor's base appears first.
   const myBase = myName ? instructors.find((i) => eqName(i.name, myName))?.base : null
   if (myBase && grouped[myBase]) {
-    const { [myBase]: mine, ...rest } = grouped
-    Object.keys(rest).forEach((k) => { /* no-op, just enumerate */ })
-    const ordered = { [myBase]: mine, ...rest }
+    const { [myBase]: mine, ..._rest } = grouped
+    const ordered = { [myBase]: mine, ..._rest }
     Object.keys(grouped).forEach((k) => delete grouped[k])
     Object.assign(grouped, ordered)
   }
@@ -137,7 +139,7 @@ export default function ManageInstructorsModal({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Anna Herrington"
+                placeholder="First Last"
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
               />
             </div>
@@ -154,6 +156,30 @@ export default function ManageInstructorsModal({
               </select>
             </div>
             <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={handleAdd}>+ Add</button>
+          </div>
+
+          {/* Search box — handy as the roster grows */}
+          <div style={{ marginBottom: 10, position: 'relative' }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name…"
+              style={{ width: '100%', fontSize: 13, padding: '6px 10px', paddingRight: search ? 28 : 10 }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  border: 'none', background: 'transparent', color: '#9ca3af',
+                  fontSize: 14, cursor: 'pointer', padding: 2,
+                }}
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           {/* Filter tabs */}
@@ -177,7 +203,9 @@ export default function ManageInstructorsModal({
           {/* Roster grouped by base */}
           {Object.keys(grouped).length === 0 ? (
             <div style={{ textAlign: 'center', padding: 16, color: '#6b7280', fontSize: 13 }}>
-              No instructors {filter !== 'All' ? `at ${filter}` : ''} yet
+              {q
+                ? <>No instructors {filter !== 'All' ? `at ${filter} ` : ''}match "<strong>{search}</strong>"</>
+                : <>No instructors {filter !== 'All' ? `at ${filter}` : ''} yet</>}
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 12, maxHeight: 360, overflowY: 'auto' }}>
@@ -274,19 +302,19 @@ export default function ManageInstructorsModal({
                               const pendingStage    = roleRequests.some((r) => r.instructorName === ins.name && r.base === ins.base && r.field === 'stageCheck')
                               const reqDesignation  = (field) => {
                                 const ok = onSubmitRoleRequest?.({ instructorName: ins.name, base: ins.base, field })
-                                if (ok === false) alert('You already have a request pending for that designation.')
+                                if (ok === false) toast.error('You already have a request pending for that designation.')
                               }
                               return (
                                 <div style={{ fontSize: 11, color: '#6b7280', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                   Need a designation?
                                   {!hasChief && !pendingChief && (
-                                    <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('chief')}>
+                                    <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('chief')}>
                                       Request Chief
                                     </button>
                                   )}
                                   {pendingChief && <span style={{ color: '#b45309', fontSize: 10 }}>Chief request pending</span>}
                                   {!hasStage && !pendingStage && (
-                                    <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('stageCheck')}>
+                                    <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => reqDesignation('stageCheck')}>
                                       Request Stage Check
                                     </button>
                                   )}
@@ -363,7 +391,7 @@ export default function ManageInstructorsModal({
                             <button
                               className="instr-remove-btn"
                               title="Remove"
-                              onClick={() => { if (confirm(`Remove ${ins.name} from ${ins.base}?`)) onDelete(ins.name, ins.base) }}
+                              onClick={async () => { if (await toast.confirm(`Remove ${ins.name} from ${ins.base}?`)) onDelete(ins.name, ins.base) }}
                             >
                               ✕
                             </button>

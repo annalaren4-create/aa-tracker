@@ -7,6 +7,29 @@ import { LU_TERMS, LU_DOUBLEUP_BUFFER_DAYS } from '../data/constants'
  * up. Stored on the student record.
  */
 
+// ─── Date helpers (used by terms + StudentDetail + ChiefDash) ──────────────
+/** Today's date as a yyyy-mm-dd ISO string. */
+export function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** Parse a yyyy-mm-dd ISO string into a Date at local midnight (avoids the
+ *  off-by-one timezone bug from `new Date('2026-05-26')` which parses as UTC). */
+export function parseIsoDate(iso) {
+  if (!iso) return null
+  return new Date(iso + 'T00:00:00')
+}
+
+/** Format a yyyy-mm-dd ISO string as "Apr 12, 2026" (or just "Apr 12"
+ *  when `withYear` is false). */
+export function fmtShortDate(iso, withYear = true) {
+  const d = parseIsoDate(iso)
+  if (!d) return '—'
+  return d.toLocaleDateString('en-US', withYear
+    ? { month: 'short', day: 'numeric', year: 'numeric' }
+    : { month: 'short', day: 'numeric' })
+}
+
 /** Quick lookup for a specific term entry. */
 export function getTerm(pace) {
   if (!pace || !pace.semester || !pace.subterm) return null
@@ -174,22 +197,20 @@ export function targetDatesForCourse(lessons, sLogs, deadlineIso, today = new Da
   const todayIso = today.toISOString().slice(0, 10)
 
   // Anchor — when the student's per-lesson schedule should start spreading from:
-  //   1. Earliest log date in this course, if they've already flown. Once
-  //      they've started, the schedule locks to their actual start.
-  //   2. Otherwise the term start date if it's in the future (D-term
-  //      students whose term hasn't begun yet shouldn't be told to fly
-  //      lessons retroactively).
+  //   1. Term start date, if the term hasn't begun yet (D-term students
+  //      whose term opens in October still see a schedule that begins on
+  //      10/26 even if they pre-flew a lesson in May). This means
+  //      switching pace from A → D actually shifts the schedule.
+  //   2. Otherwise earliest log date, if they've already flown. Locks the
+  //      schedule to when they actually started.
   //   3. Otherwise today (term already started but no flights logged).
   let anchorIso = todayIso
-  if (sLogs) {
-    const dates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean).sort()
-    if (dates.length) {
-      anchorIso = dates[0]
-    } else if (termStartIso && termStartIso > todayIso) {
-      anchorIso = termStartIso
-    }
-  } else if (termStartIso && termStartIso > todayIso) {
+  const logDates = sLogs ? Object.values(sLogs).map((lg) => lg?.date).filter(Boolean).sort() : []
+  const earliestLog = logDates[0] || null
+  if (termStartIso && termStartIso > todayIso) {
     anchorIso = termStartIso
+  } else if (earliestLog) {
+    anchorIso = earliestLog
   }
 
   const anchor   = new Date(anchorIso   + 'T00:00:00')

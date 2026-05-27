@@ -7,6 +7,7 @@ import AccountSettingsModal from './modals/AccountSettingsModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import { eqName } from '../utils/storage'
 import { paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, behindSchedule } from '../utils/terms'
+import { useToast } from './Toast'
 
 const ALL = 'All'
 
@@ -18,6 +19,19 @@ const PACE_COLOR = { under: '#3b82f6', 'on-track': '#16a34a', over: '#dc2626' }
 const PACE_BG    = { under: '#eff6ff', 'on-track': '#f0fdf4', over: '#fef2f2' }
 const PACE_TEXT  = { under: '#1d4ed8', 'on-track': '#15803d', over: '#dc2626' }
 const PACE_LABEL = { under: 'Under', 'on-track': 'On Track', over: 'Over' }
+
+/**
+ * How many whole days have passed since the student's most recent log
+ * entry for the given course's sLogs map? Returns null when no logs
+ * exist (treat as "never flown"). Used by the Inactive chip's count
+ * and the matching row filter.
+ */
+function daysSinceLastLog(sLogs, todayMs = Date.now()) {
+  const dates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean)
+  if (!dates.length) return null
+  const latest = dates.sort().slice(-1)[0]
+  return Math.floor((todayMs - new Date(latest + 'T00:00:00').getTime()) / 86400000)
+}
 
 /** Given a calcProgress result, return budget pace info or null.
  *  Uses `projectedWithRepeat` (which already adds a typical 1-repeat
@@ -57,6 +71,7 @@ export default function ChiefDash({
   onUpdateAccount,
   logs = {},
 }) {
+  const toast = useToast()
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
@@ -101,16 +116,12 @@ export default function ChiefDash({
     // Falling behind
     if (behindSchedule(s, courseDef, sLogs).behind) behindCount++
 
-    // Inactive — find latest log date; if > 10 days ago, count it. Skip
-    // students whose course is already done (pct 100).
+    // Inactive — last log > 10 days ago. Skip students whose course is
+    // already done (pct 100).
     const p = calcProgress(s)
     if (p.pct < 100) {
-      const allDates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean)
-      if (allDates.length) {
-        const latest = allDates.sort().slice(-1)[0]
-        const ageMs = todayMs - new Date(latest + 'T00:00:00').getTime()
-        if (ageMs > tenDaysMs) inactiveCount++
-      }
+      const days = daysSinceLastLog(sLogs, todayMs)
+      if (days !== null && days > 10) inactiveCount++
     }
 
     // FSC scheduled in the next 10 days (scheduled or backup)
@@ -128,8 +139,7 @@ export default function ChiefDash({
   const underCount   = withStatus.filter((p) => p.status === 'under').length
   const onTrackCount = withStatus.filter((p) => p.status === 'on-track').length
   const overCount    = withStatus.filter((p) => p.status === 'over').length
-  const noDataCount  = totalStudents - tracked.length + tracked.filter((p) => !p.status).length
-  const maxBarCount  = Math.max(underCount, onTrackCount, overCount, noDataCount, 1)
+  const maxBarCount  = Math.max(underCount, onTrackCount, overCount, 1)
 
   // Filtered + sorted student list
   function toggleSort(col) {
@@ -151,10 +161,8 @@ export default function ChiefDash({
     if (chipFilter === 'inactive') {
       const p = calcProgress(s)
       if (p.pct >= 100) return false
-      const dates = Object.values(sLogs).map((lg) => lg?.date).filter(Boolean)
-      if (!dates.length) return false
-      const latest = dates.sort().slice(-1)[0]
-      return (todayMs - new Date(latest + 'T00:00:00').getTime()) > tenDaysMs
+      const days = daysSinceLastLog(sLogs, todayMs)
+      return days !== null && days > 10
     }
     if (chipFilter === 'fscSoon') {
       const fscIso = s.scheduledFsc || s.backupFsc
@@ -314,7 +322,6 @@ export default function ChiefDash({
               <ChartBar label="Under Budget" count={underCount}   max={maxBarCount} color={PACE_COLOR.under} />
               <ChartBar label="On Track"     count={onTrackCount} max={maxBarCount} color={PACE_COLOR['on-track']} />
               <ChartBar label="Over Budget"  count={overCount}    max={maxBarCount} color={PACE_COLOR.over} />
-              <ChartBar label="No Data"      count={noDataCount}  max={maxBarCount} color="#9ca3af" />
             </div>
           </div>
 
@@ -433,13 +440,13 @@ export default function ChiefDash({
                   instructors={instructors}
                   onUpdateStudent={onUpdateStudent}
                   onView={() => onSelectStudent(student)}
-                  onDelete={() => {
-                    if (confirm(`Remove ${student.name} from the dashboard?\n\nTheir login account will be kept — they can sign back in or be re-added later.`)) {
+                  onDelete={async () => {
+                    if (await toast.confirm(`Remove ${student.name} from the dashboard?\n\nTheir login account will be kept — they can sign back in or be re-added later.`)) {
                       onDeleteStudent(student.id)
                     }
                   }}
-                  onDeleteAccount={() => {
-                    if (confirm(`Permanently delete ${student.name}'s account?\n\nThis removes both the student record and the login account. This cannot be undone.`)) {
+                  onDeleteAccount={async () => {
+                    if (await toast.confirm(`Permanently delete ${student.name}'s account?\n\nThis removes both the student record and the login account. This cannot be undone.`)) {
                       onDeleteStudentAccount(student.id)
                     }
                   }}

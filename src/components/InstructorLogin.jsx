@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { checkLogin } from '../utils/auth'
+import { LOCATIONS } from '../data/constants'
 
 export default function InstructorLogin({ onSuccess, onBack }) {
   const [username, setUsername] = useState('')
@@ -28,7 +29,7 @@ export default function InstructorLogin({ onSuccess, onBack }) {
           <img className="logo-badge" src="/aviation-adventures-logo.png" alt="Aviation Adventures" />
           <h1>Instructor Portal</h1>
         </div>
-        <small>KHEF · KRMN · KHWY · KOKV · KJYO</small>
+        <small>{LOCATIONS.join(' · ')}</small>
       </div>
 
       <div style={{ padding: '60px 20px', maxWidth: 400, margin: '0 auto' }}>

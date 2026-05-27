@@ -3,6 +3,7 @@ import { COURSES, COURSE_NAMES } from '../data/courses'
 import { LOCATIONS, SCHOOLS, CHIEF_ACCESS_CODE } from '../data/constants'
 import { registerAccount } from '../utils/auth'
 import { eqName } from '../utils/storage'
+import { useToast } from './Toast'
 
 // Default aircraft per course — mirrors AddStudentModal's logic
 function defaultAircraft(course) {
@@ -20,6 +21,7 @@ const ROLE_OPTIONS = [
 ]
 
 export default function Register({ students, instructors = [], calcProgress, onAddStudent, onSuccess, onBack }) {
+  const toast = useToast()
   const [step, setStep]               = useState(1)
   const [name, setName]               = useState('')
   const [role, setRole]               = useState('')
@@ -65,7 +67,7 @@ export default function Register({ students, instructors = [], calcProgress, onA
   // registrations so accounts attach to the canonical roster entry.
   const rosterMatches = instructors.filter((i) => eqName(i.name, name))
 
-  function handleRoleSelect(r, rl) {
+  async function handleRoleSelect(r, rl) {
     // Strict role enforcement based on roster membership. If the typed
     // name appears on the STUDENT roster but NOT on the instructor
     // roster, they must register as a student — block the chief /
@@ -75,8 +77,8 @@ export default function Register({ students, instructors = [], calcProgress, onA
     const onStudentRoster    = students.some((s) => eqName(s.name, name))
     const onInstructorRoster = instructors.some((i) => eqName(i.name, name))
     if ((r === 'instructor' || r === 'chief') && onStudentRoster && !onInstructorRoster) {
-      alert(
-        `${name} is registered as a student. You must use the Student portal.\n\n` +
+      toast.error(
+        `${name} is registered as a student. You must use the Student portal. ` +
         `If you should also be on the instructor roster, please ask a chief to add you first.`
       )
       return
@@ -86,8 +88,8 @@ export default function Register({ students, instructors = [], calcProgress, onA
     // (Dual-role on both rosters bypasses this check, since the student
     // path is also legitimate for them.)
     if (r === 'student' && onInstructorRoster && !onStudentRoster) {
-      alert(
-        `${name} is registered as an instructor. You must use the Instructor portal.\n\n` +
+      toast.error(
+        `${name} is registered as an instructor. You must use the Instructor portal. ` +
         `If you should also have a student record, please ask a chief to add you first.`
       )
       return
@@ -101,10 +103,9 @@ export default function Register({ students, instructors = [], calcProgress, onA
 
     // Wrong tile catch — if she meant chief but tapped instructor.
     if (r === 'instructor' && rosterChiefMatch) {
-      const fix = window.confirm(
+      const fix = await toast.confirm(
         `${rosterChiefMatch.name} is listed as a Chief / Assistant Chief Instructor on the roster.\n\n` +
-        `Register as Chief instead?\n\n` +
-        `OK = switch to Chief\nCancel = stay as Instructor`
+        `Register as Chief instead?\n\nOK = switch to Chief · Cancel = stay as Instructor`
       )
       if (fix) {
         r = 'chief'
@@ -118,10 +119,14 @@ export default function Register({ students, instructors = [], calcProgress, onA
     // a chief, we trust the roster and skip the code. The code only
     // exists to protect against people NOT on the chief list.
     if (r === 'chief' && !rosterChiefMatch) {
+      // TODO: replace window.prompt with a dedicated InvitationCodeModal
+      //   once the toast/dialog system gains a `prompt()` variant. The
+      //   one-liner stays inline for now since this only fires for an
+      //   off-roster chief signup.
       const entered = window.prompt('Chief Instructor access is restricted.\n\nEnter the chief invite code to continue:')
       if (entered === null) return                                   // cancelled
       if (entered.trim() !== CHIEF_ACCESS_CODE) {
-        alert('Invalid chief invite code. Please request the current code from a chief instructor, or pick the Instructor role instead.')
+        toast.error('Invalid chief invite code. Request the current code from a chief instructor, or pick the Instructor role instead.')
         return
       }
     }
@@ -159,7 +164,7 @@ export default function Register({ students, instructors = [], calcProgress, onA
     setStep(4)
   }
 
-  function handleStudentSelect(student) {
+  async function handleStudentSelect(student) {
     setStudentRecord(student)
     // If the typed name is also on the INSTRUCTOR roster (e.g. David Pagano
     // who teaches and is also working on his own ratings), give them a
@@ -169,10 +174,10 @@ export default function Register({ students, instructors = [], calcProgress, onA
     // there's no loss of access — and they gain logging / management.
     const rosterMatch = instructors.find((i) => eqName(i.name, name))
     if (rosterMatch) {
-      const upgrade = window.confirm(
+      const upgrade = await toast.confirm(
         `${rosterMatch.name} is also on the instructor roster.\n\n` +
-        `Would you like to register as an Instructor instead? You'll still see your own training record under "My Course," plus you can log flights for students you teach.\n\n` +
-        `OK = register as Instructor (recommended)\nCancel = register as Student only`
+        `Register as an Instructor instead? You'll still see your own training record under "My Course," plus you can log flights for students you teach.\n\n` +
+        `OK = register as Instructor (recommended) · Cancel = register as Student only`
       )
       if (upgrade) {
         setRole('instructor')
@@ -649,7 +654,7 @@ export default function Register({ students, instructors = [], calcProgress, onA
       </div>
 
       <footer style={{ textAlign: 'center', padding: '14px 20px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
-        Aviation Adventures · KHEF · KRMN · KHWY · KOKV · KJYO
+        Aviation Adventures · {LOCATIONS.join(' · ')}
       </footer>
     </div>
   )

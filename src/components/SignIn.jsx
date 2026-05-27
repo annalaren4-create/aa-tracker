@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { checkLogin } from '../utils/auth'
+import { LOCATIONS } from '../data/constants'
 
 export default function SignIn({ onSuccess, onRegister, onBack }) {
   const [username, setUsername] = useState('')
@@ -117,7 +118,7 @@ export default function SignIn({ onSuccess, onRegister, onBack }) {
       </div>
 
       <footer style={{ textAlign: 'center', padding: '14px 20px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
-        Aviation Adventures · KHEF · KRMN · KHWY · KOKV · KJYO
+        Aviation Adventures · {LOCATIONS.join(' · ')}
       </footer>
     </div>
   )

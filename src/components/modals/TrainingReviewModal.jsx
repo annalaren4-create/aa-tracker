@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { COURSES } from '../../data/courses'
 import { uid, eqName } from '../../utils/storage'
+import { currentBranding } from '../../config/branding'
+import { useToast } from '../Toast'
 
 /**
  * Training Review form — mirrors the Liberty University FTA Training Review template.
@@ -13,8 +15,29 @@ import { uid, eqName } from '../../utils/storage'
  *     chief(s) at the student's base)
  *   - on Email or Print, the form is saved to student.trainingReviews so
  *     chiefs/instructors/students can see the audit trail later
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TODO (backend migration): replace the mailto: flow with server-side PDF
+ * generation + transactional email. Plan:
+ *   1. Render this form to a real PDF on the server. Options:
+ *      - @react-pdf/renderer (write the form as RN-PDF components; signatures
+ *        embed via the base64 PNG we already capture)
+ *      - Puppeteer/Playwright printing the print-stylesheet route headless
+ *      - pdf-lib to fill Liberty's official PDF form field-by-field (best
+ *        fidelity if Liberty supplies a fillable template)
+ *   2. Backend route POST /training-reviews/:id/email hands the PDF to a
+ *      transactional email service (Resend / Postmark / SendGrid). To:
+ *      flightaffiliate@liberty.edu, CC: assigned base chief from
+ *      TR_CC_BY_BASE, attachment: training-review-{student}-{date}.pdf.
+ *   3. Persist the PDF to object storage (Supabase Storage / S3) and save
+ *      the URL on the trainingReviews record so the audit trail in
+ *      StudentDetail can offer "Download PDF" per entry.
+ *   4. Front-end: swap window.location.href = mailto with fetch(...) +
+ *      success toast, and add a Download link in the TR history list.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], onSaveReview, onClose }) {
+  const toast = useToast()
   const today = new Date().toISOString().slice(0, 10)
   const course = COURSES[student.course]
   const courseLabel = `${student.course}${course?.avia ? ` (${course.avia})` : ''}`
@@ -56,23 +79,26 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
 
   // Per-base CC routing. Each base has ONE designated chief who receives
   // every Training Review email from that location — not all chiefs at the
-  // base, just the assigned recipient:
-  //   KHEF → Bob Hepp
-  //   KHWY → John Knapp
-  //   KRMN → Kim Webster
-  //   KJYO → Brenda Gillespie
-  //   KOKV → Brenda Gillespie
-  // Falls back to the school's known email if the roster's record is missing.
-  const TR_CC_BY_BASE = {
-    KHEF: 'Bob Hepp',
-    KHWY: 'John Knapp',
-    KRMN: 'Kim Webster',
-    KJYO: 'Brenda Gillespie',
-    KOKV: 'Brenda Gillespie',
-  }
+  // base, just the assigned recipient. Sourced from the active school's
+  // branding config so other FTAs can set their own routing later.
+  const TR_CC_BY_BASE = currentBranding().trainingReviewCcByBase || {}
   const ccName  = TR_CC_BY_BASE[student.base]
   const ccChief = ccName ? instructors.find((i) => eqName(i.name, ccName) && i.email) : null
   const baseChiefs = ccChief ? [ccChief] : []
+  // Did we find the assigned chief in the roster, but they have no email?
+  const ccChiefMissingEmail = !!(ccName && !ccChief && instructors.find((i) => eqName(i.name, ccName)))
+
+  // Soft pre-flight check used by Email & Print. Returns true if the user
+  // wants to continue despite missing signatures / printed names.
+  const confirmIfIncomplete = async () => {
+    const missing = []
+    if (!form.designeeSig)       missing.push('FTA designee signature')
+    if (!form.designeeSigName)   missing.push('FTA designee printed name')
+    if (!form.studentSig)        missing.push('student signature')
+    if (!form.studentSigName)    missing.push('student printed name')
+    if (missing.length === 0) return true
+    return await toast.confirm(`Missing: ${missing.join(', ')}.\n\nSend anyway?`)
+  }
 
   // Persist the current state of the form as a training-review record on
   // the student's profile. Used by both Email and Print actions so the
@@ -82,7 +108,13 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
     onSaveReview(student.id, {
       id: uid(),
       date: form.date,
+      // Display label shown in the TR history list (e.g. "Private 1 (AVIA220)").
       course: form.course,
+      // Bare course name used to filter the history per-course so reviews
+      // for a finished course only show up while viewing that course in
+      // the course-history switcher. Captured at save time so renaming the
+      // current course later doesn't orphan old reviews.
+      courseName: student.course,
       writtenBy: form.writtenBy,
       rationale: form.rationale,
       outcomes: form.outcomes,
@@ -95,7 +127,8 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
     })
   }
 
-  const handleEmail = () => {
+  const handleEmail = async () => {
+    if (!(await confirmIfIncomplete())) return
     const ccList = baseChiefs.map((c) => c.email).filter(Boolean).join(',')
     const subject = `Training Review — ${student.name} — ${form.date}`
     const body = [
@@ -128,7 +161,8 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
     onClose?.()                                            // close popup once the email client has been kicked off
   }
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (!(await confirmIfIncomplete())) return
     saveReview()
     window.print()
     onClose?.()                                            // close popup after print dialog returns
@@ -141,7 +175,20 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 500 }}>Training Review</h2>
             <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-              Signed copy must be e-mailed to flightaffiliate@liberty.edu
+              To: flightaffiliate@liberty.edu
+              {ccChief && (
+                <> · CC: <span style={{ color: '#1a3a5c', fontWeight: 600 }}>{ccChief.name}</span></>
+              )}
+              {ccChiefMissingEmail && (
+                <span style={{ color: '#b45309', fontWeight: 600, marginLeft: 6 }}>
+                  · {ccName} has no email on file
+                </span>
+              )}
+              {!ccName && (
+                <span style={{ color: '#b45309', fontWeight: 600, marginLeft: 6 }}>
+                  · no CC chief assigned for {student.base}
+                </span>
+              )}
             </div>
           </div>
           <button className="btn btn-sm" onClick={onClose}>✕</button>

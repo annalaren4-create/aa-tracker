@@ -10,8 +10,10 @@ import StudentLogin from './components/StudentLogin'
 import InstructorDash from './components/InstructorDash'
 import ChiefDash from './components/ChiefDash'
 import StudentDetail from './components/StudentDetail'
+import { useToast } from './components/Toast'
 
 export default function App() {
+  const toast = useToast()
   const [view, setView] = useState('home')
   const [students, setStudents] = useState(() => {
     const saved = lsGet('students')
@@ -374,7 +376,7 @@ export default function App() {
       const collision = instructors.find((i) =>
         i.name === targetName && i.base === targetBase && !(i.name === origName && i.base === origBase)
       )
-      if (collision) { alert(`${targetName} is already listed at ${targetBase}`); return }
+      if (collision) { toast.error(`${targetName} is already listed at ${targetBase}`); return }
     }
     saveInstructors(instructors.map((i) =>
       i.name === origName && i.base === origBase ? { ...i, ...changes } : i

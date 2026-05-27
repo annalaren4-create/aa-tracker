@@ -17,6 +17,7 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
   const [usernamePw, setUsernamePw] = useState('')
   const [usernameErr, setUsernameErr] = useState('')
   const [usernameOk, setUsernameOk] = useState('')
+  const [showUsernamePw, setShowUsernamePw] = useState(false)
 
   // Password form
   const [pwOld, setPwOld] = useState('')
@@ -24,6 +25,16 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwErr, setPwErr] = useState('')
   const [pwOk, setPwOk] = useState('')
+  const [showPw, setShowPw] = useState(false)
+
+  // Live validation hints
+  const usernameTrimmed = usernameNew.trim()
+  const usernameChanged = !!usernameTrimmed && usernameTrimmed.toLowerCase() !== (account?.username || '').toLowerCase()
+  const canSubmitUsername = usernameChanged && !!usernamePw
+
+  const pwLongEnough  = pwNew.length >= 6
+  const pwMatches     = !!pwNew && pwNew === pwConfirm
+  const canSubmitPw   = !!pwOld && pwLongEnough && pwMatches
 
   const submitUsername = (e) => {
     e.preventDefault()
@@ -91,16 +102,30 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label>Current password (to confirm)</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={usernamePw}
-                  onChange={(e) => setUsernamePw(e.target.value)}
+                  onChange={setUsernamePw}
+                  show={showUsernamePw}
+                  toggle={() => setShowUsernamePw((s) => !s)}
                   required
                 />
               </div>
+              {usernameNew && !usernameChanged && (
+                <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
+                  That's already your username — change it to save.
+                </div>
+              )}
               {usernameErr && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{usernameErr}</div>}
               {usernameOk && <div style={{ color: '#15803d', fontSize: 12, marginBottom: 8 }}>{usernameOk}</div>}
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px' }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!canSubmitUsername}
+                style={{
+                  width: '100%', justifyContent: 'center', padding: '10px 14px',
+                  opacity: canSubmitUsername ? 1 : 0.5, cursor: canSubmitUsername ? 'pointer' : 'not-allowed',
+                }}
+              >
                 Save username
               </button>
             </form>
@@ -110,35 +135,54 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
             <form onSubmit={submitPassword}>
               <div style={{ marginBottom: 12 }}>
                 <label>Current password</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={pwOld}
-                  onChange={(e) => setPwOld(e.target.value)}
+                  onChange={setPwOld}
+                  show={showPw}
+                  toggle={() => setShowPw((s) => !s)}
                   autoFocus
                   required
                 />
               </div>
               <div style={{ marginBottom: 12 }}>
-                <label>New password (min 6 chars)</label>
-                <input
-                  type="password"
+                <label>New password</label>
+                <PasswordInput
                   value={pwNew}
-                  onChange={(e) => setPwNew(e.target.value)}
+                  onChange={setPwNew}
+                  show={showPw}
+                  toggle={() => setShowPw((s) => !s)}
                   required
                 />
+                <div style={{ fontSize: 11, color: pwNew ? (pwLongEnough ? '#15803d' : '#dc2626') : '#9ca3af', marginTop: 3 }}>
+                  {pwNew ? (pwLongEnough ? '✓ At least 6 characters' : 'At least 6 characters required') : 'Minimum 6 characters'}
+                </div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label>Confirm new password</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={pwConfirm}
-                  onChange={(e) => setPwConfirm(e.target.value)}
+                  onChange={setPwConfirm}
+                  show={showPw}
+                  toggle={() => setShowPw((s) => !s)}
                   required
                 />
+                {pwConfirm && (
+                  <div style={{ fontSize: 11, color: pwMatches ? '#15803d' : '#dc2626', marginTop: 3 }}>
+                    {pwMatches ? '✓ Passwords match' : 'Passwords do not match'}
+                  </div>
+                )}
               </div>
               {pwErr && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{pwErr}</div>}
               {pwOk && <div style={{ color: '#15803d', fontSize: 12, marginBottom: 8 }}>{pwOk}</div>}
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px' }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!canSubmitPw}
+                style={{
+                  width: '100%', justifyContent: 'center', padding: '10px 14px',
+                  opacity: canSubmitPw ? 1 : 0.5, cursor: canSubmitPw ? 'pointer' : 'not-allowed',
+                }}
+              >
                 Save password
               </button>
             </form>
@@ -149,6 +193,34 @@ export default function AccountSettingsModal({ account, onUpdateAccount, onClose
           <button className="btn" onClick={onClose}>Close</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Password input with a Show/Hide toggle on the right. */
+function PasswordInput({ value, onChange, show, toggle, autoFocus, required }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoFocus={autoFocus}
+        required={required}
+        style={{ width: '100%', paddingRight: 56 }}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        style={{
+          position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+          border: 'none', background: 'transparent', color: '#6b7280',
+          fontSize: 11, cursor: 'pointer', padding: '4px 6px',
+        }}
+      >
+        {show ? 'Hide' : 'Show'}
+      </button>
     </div>
   )
 }

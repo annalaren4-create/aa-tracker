@@ -8,6 +8,7 @@ import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import { behindSchedule } from '../utils/terms'
+import { useToast } from './Toast'
 
 export default function InstructorDash({
   students, instructors, activeLocation, setActiveLocation,
@@ -17,6 +18,7 @@ export default function InstructorDash({
   calcProgress, account, onSignOut, onUpdateAccount,
   logs = {},
 }) {
+  const toast = useToast()
   const [showAdd, setShowAdd] = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
@@ -149,7 +151,7 @@ export default function InstructorDash({
                     isMine
                     myName={myName}
                     onView={() => onSelectStudent(mySelf)}
-                    onDelete={() => { if (confirm(`Remove ${mySelf.name}?`)) onDeleteStudent(mySelf.id) }}
+                    onDelete={async () => { if (await toast.confirm(`Remove ${mySelf.name}?`)) onDeleteStudent(mySelf.id) }}
                   />
                 </div>
               </section>
@@ -173,7 +175,7 @@ export default function InstructorDash({
                       isMine
                       myName={myName}
                       onView={() => onSelectStudent(student)}
-                      onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
+                      onDelete={async () => { if (await toast.confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
                     />
                   ))}
                 </div>
@@ -196,7 +198,7 @@ export default function InstructorDash({
                       progress={calcProgress(student)}
                       behind={behindFor(student)}
                       onView={() => onSelectStudent(student)}
-                      onDelete={() => { if (confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
+                      onDelete={async () => { if (await toast.confirm(`Remove ${student.name}?`)) onDeleteStudent(student.id) }}
                     />
                   ))}
                 </div>

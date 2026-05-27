@@ -1,3 +1,5 @@
+import { LOCATIONS } from '../data/constants'
+
 export default function Home({ onSignIn, onRegister }) {
   return (
     <div style={{
@@ -87,7 +89,7 @@ export default function Home({ onSignIn, onRegister }) {
         }}
       >
         <div style={{ fontWeight: 600, color: '#475569', marginBottom: 2 }}>Aviation Adventures</div>
-        <div>KHEF · KRMN · KHWY · KOKV · KJYO</div>
+        <div>{LOCATIONS.join(' · ')}</div>
       </footer>
     </div>
   )

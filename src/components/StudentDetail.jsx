@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react'
-import { COURSES, getCourseDef, syllabusVersionFor, NEXT_COURSE_OPTIONS } from '../data/courses'
+import { COURSES, getCourseDef, syllabusVersionFor } from '../data/courses'
 import { AIRCRAFT_LIST, AIRCRAFT_RATES, LU_STANDARD_AIRCRAFT, LU_TERMS, instrRate } from '../data/constants'
 import { budgetPct, budgetColor, repeatKeysFor, splitKeysFor } from '../utils/calculations'
 import { eqName } from '../utils/storage'
-import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule, getTerm, predictNextPace, selectableTerms } from '../utils/terms'
+import { flightDeadline, daysToDeadline, paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, activeTermForSubterm, targetDatesForCourse, behindSchedule, getTerm, selectableTerms, fmtShortDate } from '../utils/terms'
 import LogFlightModal from './modals/LogFlightModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import LedgerModal from './modals/LedgerModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
-
-// Columns: Lesson · Dual · Solo · XC · Instr · Sim · Tgt Total · Actual Flt · Over/Under · Ground · Objectives · Target Date · Actual Date · Status
-const COLS = '58px 44px 44px 44px 44px 44px 52px 56px 84px 56px 1fr 76px 76px 64px'
+import { InstructorContact, StatCard } from './StudentDetail/cells'
+import CourseTransitionBanner from './StudentDetail/CourseTransitionBanner'
+import TrainingReviewHistory from './StudentDetail/TrainingReviewHistory'
+import LessonTable from './StudentDetail/LessonTable'
 
 export default function StudentDetail({
   student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onClearAllLogs, onUpdateStudent, onSaveTrainingReview, onBack, calcProgress,
@@ -20,10 +21,7 @@ export default function StudentDetail({
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
   const [showLegend, setShowLegend] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
-  const [nextCourseChoice,      setNextCourseChoice]      = useState('')   // course pick in "move to next" banner
-  const [nextSemesterChoice,    setNextSemesterChoice]    = useState('')   // semester override in same banner
-  const [nextTermChoice,        setNextTermChoice]        = useState('')   // 'A' or 'D' override
-  const [nextAcceleratedChoice, setNextAcceleratedChoice] = useState(null) // checkbox override (null = use predicted)
+  // (Next-course banner state lives inside CourseTransitionBanner.)
   // Course selector — defaults to the student's current/active course. When
   // switched to a past course (from courseHistory), the page renders that
   // course's logs read-only.
@@ -78,14 +76,13 @@ export default function StudentDetail({
   // Per-lesson target dates — spread evenly between training start and the
   // effective deadline. Only meaningful when a deadline (pace or FSC) is
   // set; otherwise targetDates is {} and cells render "—".
-  const _courseHasFsc = !!getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons?.some((l) => l.fsc)
-  const _effectiveDl  = effectiveDeadline(student, _courseHasFsc)
-  const _courseLessons = getCourseDef(viewCourse, viewCourse === student.course ? undefined : syllabusVersionFor(student, viewCourse))?.lessons || []
+  const courseHasFsc  = !!course?.lessons?.some((l) => l.fsc)
+  const effectiveDl   = effectiveDeadline(student, courseHasFsc)
   // Anchor the per-lesson schedule at the term start when it's in the
   // future (e.g. a D-term student looking at their schedule before D
   // begins). Otherwise targetDatesForCourse falls back to today.
-  const _termStart    = getTerm(student.pace)?.start || null
-  const targetDates   = targetDatesForCourse(_courseLessons, sLogs, _effectiveDl, undefined, _termStart)
+  const termStart     = getTerm(student.pace)?.start || null
+  const targetDates   = targetDatesForCourse(course?.lessons || [], sLogs, effectiveDl, undefined, termStart)
   const acRate    = AIRCRAFT_RATES[student.aircraft] || 0
   const bp        = budgetPct(progress)
   const remaining = progress.flatRate ? progress.flatRate - progress.cost : null
@@ -95,11 +92,11 @@ export default function StudentDetail({
   // combination of student/instructor/OOP cards are visible today. The
   // OOP tile is student-only — instructors see OOP inline on their Est.
   // cost card instead.
-  const _showOopCard   = !isInstructor && (progress.oopCost > 0 || progress.projectedAircraftOop > 0)
-  const _statCardCount = 1 + (isInstructor ? 2 : 0) + (_showOopCard ? 1 : 0)
-  const statCardGridClass = _statCardCount >= 4 ? 'grid4'
-    : _statCardCount === 3 ? 'grid3'
-    : _statCardCount === 2 ? 'grid2'
+  const showOopCard   = !isInstructor && (progress.oopCost > 0 || progress.projectedAircraftOop > 0)
+  const statCardCount = 1 + (isInstructor ? 2 : 0) + (showOopCard ? 1 : 0)
+  const statCardGridClass = statCardCount >= 4 ? 'grid4'
+    : statCardCount === 3 ? 'grid3'
+    : statCardCount === 2 ? 'grid2'
     : ''
 
   // Running over/under across all STARTED lessons — same calc the Totals
@@ -151,7 +148,6 @@ export default function StudentDetail({
     repeatKeysFor(sLogs, l.id).forEach((rk) => addToTotals(sLogs[rk]))
   })
 
-  const fmt = (v) => v > 0 ? `${v.toFixed(1)}` : '—'
 
   // Aviation Adventures repeat policy:
   //  • Liberty funds at most ONE repeated lesson per course
@@ -191,7 +187,34 @@ export default function StudentDetail({
     return 'OOP'
   }
   const policyViolations = [...stageCheckLibViolations, ...extraLibViolations]
-  const needsTR = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
+  const hasTrTrigger = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
+
+  // Suppress the "Training Review required" banner once a signed TR has been
+  // generated covering the current OOP state. The banner comes back the
+  // moment another OOP repeat is logged with a date past the latest TR.
+  const latestOopDate = (() => {
+    const dates = [
+      ...oopLessons.map((l) => l.date).filter(Boolean),
+      ...policyViolations.map((l) => l.date).filter(Boolean),
+      ...multiRepeatLessons.flatMap((l) =>
+        repeatKeysFor(sLogs, l.id).map((rk) => sLogs[rk]?.date)
+      ).filter(Boolean),
+    ]
+    return dates.length ? dates.sort().slice(-1)[0] : null
+  })()
+  const trCovered = (() => {
+    if (!latestOopDate) return false
+    const courseTRs = (student.trainingReviews || []).filter((tr) =>
+      tr.courseName === viewCourse ||
+      (!tr.courseName && typeof tr.course === 'string' && tr.course.startsWith(viewCourse))
+    )
+    const latestSignedTR = courseTRs
+      .filter((tr) => tr.designeeSig && tr.studentSig)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]
+    if (!latestSignedTR) return false
+    return (latestSignedTR.date || '') >= latestOopDate
+  })()
+  const needsTR = hasTrTrigger && !trCovered
 
   // Pace estimate: based on completed lessons per week since the student's first
   // logged flight. Returns null when there's not enough history to project (need
@@ -424,164 +447,21 @@ export default function StudentDetail({
         )}
 
         {/* "Course complete — move to next" banner. Surfaces once the
-            current course hits 100%. Three picks:
-              • Next course (dropdown of typical next syllabuses)
-              • Next term (A or D of whatever semester is recommended)
-              • Accelerated flag (only meaningful for A — D is inherently
-                accelerated, so the toggle is hidden for D)
-            All three default to the predicted recommendation but can be
-            overridden before confirming. */}
-        {canEdit && progress.pct >= 100 && viewCourse === student.course && (() => {
-          const options = NEXT_COURSE_OPTIONS[student.course] || []
-          const completedSet = new Set((student.courseHistory || []).map((h) => h.course))
-          const availableOptions = options.filter((c) => !completedSet.has(c))
-          if (availableOptions.length === 0) return null
-
-          const nextCourse = nextCourseChoice || availableOptions[0]
-          const predicted = predictNextPace(student)        // null if no upcoming term in LU_TERMS
-
-          // Upcoming semesters the student could enroll in. Pulled from
-          // selectableTerms() so the "current + next year" visibility
-          // filter is applied consistently — far-future semesters
-          // (2028 calendar entries while we're in 2026) stay hidden.
-          const upcomingSemesters = [...new Set(
-            selectableTerms()
-              .sort((a, b) => a.start.localeCompare(b.start))
-              .map((t) => t.semester)
-          )]
-          // Belt + suspenders: the prediction is already filtered to
-          // selectableTerms() inside predictNextPace, but we still
-          // verify the predicted semester is in the visible list before
-          // defaulting to it — keeps the <select> in a valid state.
-          const predictedSemesterVisible = predicted?.pace.semester && upcomingSemesters.includes(predicted.pace.semester)
-          const chosenSemester = nextSemesterChoice
-            || (predictedSemesterVisible ? predicted.pace.semester : null)
-            || upcomingSemesters[0]
-            || ''
-          const semesterTerms = chosenSemester
-            ? LU_TERMS.filter((t) => t.semester === chosenSemester && (t.subterm === 'A' || t.subterm === 'D'))
-            : []
-          const defaultSubterm = predicted?.pace.subterm || (semesterTerms[0]?.subterm ?? 'A')
-          // If the user switched the semester away from the predicted one,
-          // ignore the predicted subterm and just default to A.
-          const baseSubterm = chosenSemester === predicted?.pace.semester ? defaultSubterm : 'A'
-          const chosenSubterm = nextTermChoice || baseSubterm
-          const chosenAccelerated = nextAcceleratedChoice ?? (predicted?.accelerated ?? false)
-
-          const wasAccelerated = student.pace?.subterm === 'A' && student.accelerated
-          const acceleratedDeadline = wasAccelerated ? flightDeadline(student.pace, true) : null
-          const finishedOnTime = wasAccelerated
-            ? (!acceleratedDeadline || new Date().toISOString().slice(0, 10) <= acceleratedDeadline)
-            : null
-
-          return (
-            <div
-              className="no-print"
-              style={{
-                marginBottom: 16, padding: '12px 16px', borderRadius: 8,
-                background: '#f0fdf4', border: '1px solid #bbf7d0',
-                display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
-                  ✓ {student.course} complete
-                </div>
-                <div style={{ fontSize: 12, color: '#15803d', marginTop: 2 }}>
-                  Pick where {student.name.split(' ')[0]} goes next:
-                </div>
-                {wasAccelerated && finishedOnTime === false && (
-                  <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
-                    Missed the {acceleratedDeadline} accelerated buffer — defaulting away from same-semester D.
-                  </div>
-                )}
-              </div>
-
-              {/* Course picker */}
-              <select
-                value={nextCourse}
-                onChange={(e) => setNextCourseChoice(e.target.value)}
-                style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
-              >
-                {availableOptions.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-
-              {/* Semester picker — every upcoming semester on the
-                  Liberty calendar is selectable so students can push
-                  out a course if they need extra time. */}
-              {upcomingSemesters.length > 0 && (
-                <select
-                  value={chosenSemester}
-                  onChange={(e) => {
-                    setNextSemesterChoice(e.target.value)
-                    setNextTermChoice('')   // reset term + accel when semester changes
-                    setNextAcceleratedChoice(null)
-                  }}
-                  style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
-                  title="Semester"
-                >
-                  {upcomingSemesters.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              )}
-
-              {/* Term picker — A or D within the chosen semester. */}
-              {semesterTerms.length > 0 && (
-                <select
-                  value={chosenSubterm}
-                  onChange={(e) => setNextTermChoice(e.target.value)}
-                  style={{ fontSize: 13, padding: '6px 10px', width: 'auto', borderRadius: 6, border: '1px solid #86efac', background: '#fff' }}
-                  title={`Term within ${chosenSemester}`}
-                >
-                  {semesterTerms.map((t) => (
-                    <option key={t.subterm} value={t.subterm}>{t.subterm} term</option>
-                  ))}
-                </select>
-              )}
-
-              {/* Accelerated toggle — only meaningful for A term picks. */}
-              {chosenSubterm === 'A' && (
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#15803d', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!chosenAccelerated}
-                    onChange={(e) => setNextAcceleratedChoice(e.target.checked)}
-                    style={{ width: 'auto' }}
-                  />
-                  Accelerated
-                </label>
-              )}
-
-              <button
-                className="btn btn-sm btn-primary"
-                onClick={() => {
-                  const nextPace = chosenSemester
-                    ? { semester: chosenSemester, subterm: chosenSubterm }
-                    : null
-                  // D term is inherently accelerated; no flag stored for D.
-                  const isAcc = chosenSubterm === 'A' && !!chosenAccelerated
-                  onUpdateStudent(student.id, {
-                    course: nextCourse,
-                    pace: nextPace,
-                    accelerated: isAcc,
-                    scheduledFsc: null,
-                    backupFsc: null,
-                  })
-                  setNextCourseChoice('')
-                  setNextSemesterChoice('')
-                  setNextTermChoice('')
-                  setNextAcceleratedChoice(null)
-                  setViewCourse(nextCourse)
-                }}
-              >
-                Move to {nextCourse}{chosenSemester ? ` · ${chosenSubterm}${chosenSubterm === 'A' && chosenAccelerated ? '*' : ''}` : ''}
-              </button>
-            </div>
-          )
-        })()}
+            current course hits 100%. See CourseTransitionBanner for the
+            picker logic; this file just wires the move action. */}
+        {canEdit && progress.pct >= 100 && viewCourse === student.course && (
+          <CourseTransitionBanner
+            student={student}
+            onMoveToNextCourse={({ course, pace, accelerated }) => {
+              onUpdateStudent(student.id, {
+                course, pace, accelerated,
+                scheduledFsc: null,
+                backupFsc: null,
+              })
+              setViewCourse(course)
+            }}
+          />
+        )}
 
         {/* Instructor contact card — visible to students AND instructors */}
         {(() => {
@@ -653,71 +533,12 @@ export default function StudentDetail({
           </div>
         )}
 
-        {/* Training Review history — visible to everyone (chiefs, instructors,
-            students). Lists every saved review with date / author / rationale
-            so the trail is preserved in case a printed/emailed copy goes
-            missing. Stays hidden when no reviews have been generated yet. */}
-        {(student.trainingReviews || []).length > 0 && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <h3 style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-                Training Review history ({student.trainingReviews.length})
-              </h3>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>Saved when a review is e-mailed or printed</span>
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {[...student.trainingReviews].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((tr) => (
-                <details key={tr.id} style={{ border: '1px solid #f1f5f9', borderRadius: 6, padding: '6px 10px', background: '#fafafa' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: 12, color: '#374151', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <strong>{tr.date ? new Date(tr.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</strong>
-                    <span style={{ color: '#6b7280' }}>{tr.course}</span>
-                    <span style={{ color: '#9ca3af' }}>· written by {tr.writtenBy || '—'}</span>
-                    {tr.designeeSig && tr.studentSig && (
-                      <span className="tag tag-green" style={{ fontSize: 10 }}>signed</span>
-                    )}
-                  </summary>
-                  <div style={{ marginTop: 8, fontSize: 11, color: '#374151', display: 'grid', gap: 6 }}>
-                    {tr.rationale && (
-                      <div><strong style={{ color: '#6b7280' }}>Rationale:</strong>
-                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.rationale}</pre>
-                      </div>
-                    )}
-                    {tr.outcomes && (
-                      <div><strong style={{ color: '#6b7280' }}>Outcomes / Next Steps:</strong>
-                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.outcomes}</pre>
-                      </div>
-                    )}
-                    {tr.funding && (
-                      <div><strong style={{ color: '#6b7280' }}>Funding Plan:</strong>
-                        <pre style={{ whiteSpace: 'pre-wrap', margin: '2px 0 0', fontFamily: 'inherit', fontSize: 11 }}>{tr.funding}</pre>
-                      </div>
-                    )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 4, color: '#6b7280' }}>
-                      <div>
-                        <strong>FTA Designee:</strong>{' '}
-                        {tr.designeeSigName || <span style={{ color: '#9ca3af' }}>(no printed name)</span>}
-                        <div style={{ marginTop: 4 }}>
-                          {tr.designeeSig
-                            ? <img src={tr.designeeSig} alt="FTA Designee signature" style={{ maxWidth: '100%', height: 50, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff' }} />
-                            : <span style={{ color: '#dc2626', fontStyle: 'italic' }}>— unsigned —</span>}
-                        </div>
-                      </div>
-                      <div>
-                        <strong>Student:</strong>{' '}
-                        {tr.studentSigName || <span style={{ color: '#9ca3af' }}>(no printed name)</span>}
-                        <div style={{ marginTop: 4 }}>
-                          {tr.studentSig
-                            ? <img src={tr.studentSig} alt="Student signature" style={{ maxWidth: '100%', height: 50, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff' }} />
-                            : <span style={{ color: '#dc2626', fontStyle: 'italic' }}>— unsigned —</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Training Review audit trail — scoped to the active course so
+            historical reviews stay attached to the course they were
+            written for. When the student moves to a new course, this
+            section clears out; toggling back to the past course via
+            "View past course" surfaces those reviews again. */}
+        <TrainingReviewHistory student={student} viewCourse={viewCourse} />
 
         {/* Stats — Progress always shown. Est. cost + LU balance shown
             only to instructors. Out-of-pocket card appears for anyone
@@ -778,17 +599,14 @@ export default function StudentDetail({
                 than the term cutoff. Effective deadline order:
                 scheduledFsc → backupFsc → term-pace deadline. */}
             {(() => {
-              // Some courses (e.g. Commercial 2) don't end with an FSC, so
-              // the scheduled/backup FSC inputs don't apply there. Only
-              // honor them when the current course actually has an fsc:true
-              // lesson; otherwise the pacer falls back to the term cutoff.
-              const courseHasFsc = !!course?.lessons?.some((l) => l.fsc)
+              // courseHasFsc declared in the outer scope; reuse here so
+              // the FSC-aware pacer follows the same rule everywhere.
               const dl = effectiveDeadline(student, courseHasFsc)
               const status = paceStatus(student, progress, courseHasFsc)
               const days = daysToEffectiveDeadline(student, courseHasFsc)
               const fpw = flightsPerWeek(student, progress, courseHasFsc)
               const statusColor = status === 'overdue' ? '#dc2626' : status === 'tight' ? '#b45309' : '#15803d'
-              const fmtDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+              const fmtDate = (iso) => iso ? fmtShortDate(iso) : ''
               // D-term is accelerated by definition (8-week back-half of
               // the semester) so we label it as such. A-term gets the
               // accelerated tag only when the student explicitly toggled it.
@@ -1108,523 +926,22 @@ export default function StudentDetail({
         </div>
 
         {/* Syllabus table */}
-        <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <h2 style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Course syllabus — {student.course}
-              <span
-                onMouseEnter={() => setShowLegend(true)}
-                onMouseLeave={() => setShowLegend(false)}
-                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-              >
-                <span
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 16, height: 16, borderRadius: '50%',
-                    background: '#e5e7eb', color: '#6b7280',
-                    fontSize: 10, fontWeight: 700,
-                  }}
-                >
-                  i
-                </span>
-                {showLegend && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, marginTop: 6,
-                    background: '#1f2937', color: '#fff',
-                    padding: '8px 12px', borderRadius: 6,
-                    fontSize: 11, fontWeight: 400, lineHeight: 1.5,
-                    whiteSpace: 'nowrap', zIndex: 50,
-                    boxShadow: '0 4px 12px rgba(0,0,0,.18)',
-                  }}>
-                    <div><strong>Dual · Solo · XC · Instr · Sim · Target</strong> — syllabus targets (read-only)</div>
-                    <div><strong>Actual · Ground</strong> — entered per attempt</div>
-                    <div>Over/Under = actual − target  (amber over, green under)</div>
-                  </div>
-                )}
-              </span>
-            </h2>
-            {isInstructor && <span style={{ fontSize: 12, color: '#6b7280' }}>Click a row to log flight time</span>}
-          </div>
-
-          {/* Header row */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: COLS, gap: 4,
-            padding: '7px 10px', fontSize: 11, color: '#6b7280', fontWeight: 500,
-            borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
-            minWidth: 1080,
-          }}>
-            <span>Lesson</span>
-            <span style={{ textAlign: 'center' }}>Dual</span>
-            <span style={{ textAlign: 'center' }}>Solo</span>
-            <span style={{ textAlign: 'center' }}>XC</span>
-            <span style={{ textAlign: 'center' }} title="Hood / instrument time">Instr</span>
-            <span style={{ textAlign: 'center' }} title="Simulator hours">Sim</span>
-            <span style={{ textAlign: 'center' }} title="Target total flight time for the lesson">Target</span>
-            <span style={{ textAlign: 'center' }} title="Actual flight time logged this attempt">Actual</span>
-            <span style={{ textAlign: 'center', paddingLeft: 16 }} title="Actual minus target — amber if over, green if under">Over/Under</span>
-            <span style={{ textAlign: 'center' }}>Ground</span>
-            <span style={{ textAlign: 'center' }}>Objectives</span>
-            <span style={{ textAlign: 'center' }} title="Planned completion date — auto-spread between training start and the effective deadline">Target</span>
-            <span style={{ textAlign: 'center' }} title="Actual completion date">Actual</span>
-            <span style={{ textAlign: 'center' }}>Status</span>
-          </div>
-
-          {course.lessons.flatMap((lesson) => {
-            // Build an "expanded" list: the original lesson row, plus a row for every
-            // repeat-attempt key in storage. Then, if the LATEST entry (original or
-            // newest repeat) was marked Repeat (Lib/OOP) or Incomplete, append an
-            // empty placeholder row so the instructor has somewhere to log the next
-            // attempt without having to dig through menus.
-            //
-            // Skip lessons that have been absorbed into a sibling combined flight
-            // (e.g. 8.2 when 8.1's log was saved with "Combined with 8.2") — the
-            // primary lesson's row will render a merged label for both.
-            const myLg = sLogs[lesson.id] || {}
-            if (myLg.combinedFrom) return []
-            const items = [{ key: lesson.id, isRepeat: false }]
-            const splitKeys  = splitKeysFor(sLogs, lesson.id)
-            const repeatKeys = repeatKeysFor(sLogs, lesson.id)
-            splitKeys.forEach((sk)  => items.push({ key: sk, isSplit: true }))
-            repeatKeys.forEach((rk) => items.push({ key: rk, isRepeat: true }))
-
-            // Identify the truly LATEST entry across original + splits + repeats
-            // by date (falling back to insertion order if dates are missing).
-            // Spawn rules:
-            //   • latest has repeatedLib/Oop → spawn next __rN (repeat attempt)
-            //   • latest has incomplete/splitContinuing → spawn next __sN
-            //     (Liberty-funded continuation, or OOP if it inherits from an
-            //     OOP repeat — handled in calcProgress)
-            const allCandidates = [
-              { key: lesson.id, lg: myLg },
-              ...splitKeys.map((k) => ({ key: k, lg: sLogs[k] || {} })),
-              ...repeatKeys.map((k) => ({ key: k, lg: sLogs[k] || {} })),
-            ].filter((c) => c.lg && Object.keys(c.lg).length > 0)
-            const latest = allCandidates.reduce((best, c) => {
-              if (!best) return c
-              const bestD = best.lg.date || ''
-              const cD = c.lg.date || ''
-              return cD >= bestD ? c : best
-            }, null)
-            const latestLg = latest?.lg || {}
-
-            if (latestLg.repeatedLib || latestLg.repeatedOop) {
-              const usedNums = repeatKeys.map((k) => parseInt(k.split('__r')[1], 10) || 0)
-              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
-              const placeholderKey = `${lesson.id}__r${nextNum}`
-              if (!sLogs[placeholderKey]) {
-                items.push({ key: placeholderKey, isRepeat: true, pending: true })
-              }
-            }
-            if (latestLg.splitContinuing || latestLg.incomplete) {
-              const usedNums = splitKeys.map((k) => parseInt(k.split('__s')[1], 10) || 0)
-              const nextNum  = (usedNums.length ? Math.max(...usedNums) : 0) + 1
-              const placeholderKey = `${lesson.id}__s${nextNum}`
-              if (!sLogs[placeholderKey]) {
-                items.push({ key: placeholderKey, isSplit: true, pending: true })
-              }
-            }
-            return items
-          }).map(({ key, isRepeat, isSplit, pending }) => {
-            // Resolve the underlying lesson definition (strip __rN or __sN suffixes).
-            const baseId = key.split('__r')[0].split('__s')[0]
-            const lesson = course.lessons.find((l) => l.id === baseId)
-            const lg = sLogs[key] || {}
-            // Status pill: "unsuccessful" (busted) ONLY applies to a Final
-            // Stage Check marked with repeatedOop. FSC marked with incomplete
-            // (weather/illness) is just a normal incomplete that spawns a
-            // Liberty-funded continuation.
-            const lessonDef = lesson  // alias for clarity
-            const fscBusted = lessonDef.fsc && lg.repeatedOop
-            const status = lg.completed
-              ? 'done'
-              : fscBusted
-                ? 'unsuccessful'
-                : lg.incomplete
-                  ? 'incomplete'
-                  : Object.keys(lg).length > 0 ? 'partial' : 'pending'
-            const origLg = sLogs[baseId] || {}
-            // 0-based index of this repeat (1st repeat = 0, 2nd = 1, ...). We
-            // derive it directly from the __rN suffix to avoid any dependency on
-            // how the storage keys happen to sort.
-            const repeatNum = isRepeat ? (parseInt(key.split('__r')[1], 10) || 1) : 0
-            const repeatIdx = isRepeat ? repeatNum - 1 : 0
-            const repeatBadge = isRepeat ? repeatBillingType(lesson, repeatIdx) : null
-
-            // Split target redistribution: when a lesson is being split across
-            // multiple sessions, divide the lesson's total target between them.
-            //  - Original row's "target" = hours actually logged this session
-            //  - Each split row's "target" = remaining unfilled portion of the
-            //    lesson, given what's been logged earlier in the chain
-            // Sum across the chain therefore equals the lesson's original target.
-            // Include the *placeholder* __sN row in the chain too, so on the
-            // very first split the original row's target shrinks immediately
-            // even before any real __sN data exists in storage yet.
-            const splitsStorage   = splitKeysFor(sLogs, lesson.id)
-            const baseOrigLg      = sLogs[lesson.id] || {}
-            const lastStoredKey   = splitsStorage[splitsStorage.length - 1]
-            const lastStoredLg    = lastStoredKey ? sLogs[lastStoredKey] : null
-            const placeholderPending =
-              (!lastStoredKey && (baseOrigLg.splitContinuing || baseOrigLg.incomplete)) ||
-              (lastStoredKey  && (lastStoredLg?.splitContinuing || lastStoredLg?.incomplete))
-            const effectiveSplitKeys = (() => {
-              if (!placeholderPending) return splitsStorage
-              const nums = splitsStorage.map((k) => parseInt(k.split('__s')[1], 10) || 0)
-              const nextN = (nums.length ? Math.max(...nums) : 0) + 1
-              return [...splitsStorage, `${lesson.id}__s${nextN}`]
-            })()
-            const splitChainKeys = [lesson.id, ...effectiveSplitKeys]
-            const inSplitChain   = splitChainKeys.length > 1
-            const myChainIdx     = inSplitChain ? splitChainKeys.indexOf(key) : -1
-            let splitDisplayTarget = null
-            if (inSplitChain && myChainIdx >= 0) {
-              const myActual = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
-              if (myChainIdx === 0) {
-                // Original row — target is what was actually flown this session.
-                splitDisplayTarget = myActual
-              } else {
-                // Split row — target is whatever's left of the lesson total.
-                const priorActual = splitChainKeys.slice(0, myChainIdx).reduce((s, k) => {
-                  const pl = sLogs[k] || {}
-                  return s + (pl.dual || 0) + (pl.solo || 0) + (pl.sim || 0)
-                }, 0)
-                splitDisplayTarget = Math.max(0, (lesson.t || 0) - priorActual)
-              }
-            }
-
-            // If this row was auto-marked completed via a sibling lesson's
-            // "Combined with" flag, redirect any click to the primary lesson.
-            // (After the flatMap skip above this should rarely render, but keep
-            // the redirect as a fallback.)
-            const combinedFrom = lg.combinedFrom
-            const isCombinedChild = !!combinedFrom
-            // Detect if THIS lesson is the primary of a combined pair (its
-            // sibling has been absorbed into this row via combinedFrom).
-            const siblingId = !isRepeat && lesson.combinableWith
-            const siblingLg  = siblingId ? sLogs[siblingId] : null
-            const siblingDef = siblingId ? course.lessons.find((l) => l.id === siblingId) : null
-            const isCombinedPrimary = !!(siblingLg?.combinedFrom === lesson.id && siblingDef)
-            // Targets shown in this row — for the combined primary, sum both.
-            const showLesson = isCombinedPrimary
-              ? {
-                  ...lesson,
-                  id: `${lesson.id} + ${siblingDef.id}`,
-                  d:  (lesson.d  || 0) + (siblingDef.d  || 0),
-                  s:  (lesson.s  || 0) + (siblingDef.s  || 0),
-                  x:  (lesson.x  || 0) + (siblingDef.x  || 0),
-                  i:  (lesson.i  || 0) + (siblingDef.i  || 0),
-                  sm: (lesson.sm || 0) + (siblingDef.sm || 0),
-                  t:  (lesson.t  || 0) + (siblingDef.t  || 0),
-                  g:  (lesson.g  || 0) + (siblingDef.g  || 0),
-                }
-              : lesson
-            const openLog = () => {
-              if (!isInstructor) return
-              if (isCombinedChild) {
-                const primaryLesson = course.lessons.find((l) => l.id === combinedFrom)
-                if (primaryLesson) setLogLesson({ lesson: primaryLesson, key: combinedFrom })
-              } else {
-                setLogLesson({ lesson, key })
-              }
-            }
-            return (
-              <div
-                key={key}
-                style={{
-                  display: 'grid', gridTemplateColumns: COLS, gap: 4,
-                  alignItems: 'center', padding: '6px 10px',
-                  borderBottom: '1px solid #f3f4f6', fontSize: 12, cursor: 'pointer',
-                  background: isCombinedChild
-                    ? 'rgba(7,89,133,.05)'
-                    : isSplit
-                      ? 'rgba(2,132,199,.04)'
-                      : isRepeat
-                        ? 'rgba(220,38,38,.04)'
-                        : lesson.fsc ? 'rgba(185,28,28,.12)'    // FSC — bold red wash, biggest visual weight
-                        : lesson.sc  ? 'rgba(26,58,92,.05)'     // regular / mock stage check
-                        : lesson.pc  ? 'rgba(245,158,11,.04)'   // prog check
-                        : '',
-                  borderLeft: isCombinedChild
-                    ? '3px solid #0284c7'
-                    : isSplit
-                      ? '3px solid #0284c7'
-                      : isRepeat
-                        ? '3px solid #dc2626'
-                        : lesson.fsc
-                          ? '4px solid #b91c1c'                  // FSC — thick red stripe
-                          : undefined,
-                  opacity: isCombinedChild ? 0.85 : 1,
-                  minWidth: 1080,
-                }}
-                title={isCombinedChild ? `Logged as combined flight with lesson ${combinedFrom} — click to edit there` : undefined}
-                onClick={openLog}
-              >
-                <div>
-                  <span style={{ fontWeight: 500 }}>
-                    {isRepeat
-                      ? <span style={{ color: '#dc2626' }}>↻ {lesson.id}</span>
-                      : isSplit
-                        ? <span style={{ color: '#0284c7' }}>→ {lesson.id}</span>
-                        : isCombinedPrimary ? showLesson.id : lesson.id}
-                  </span>
-                  {isSplit && (
-                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
-                      split {parseInt(key.split('__s')[1], 10) || ''}{pending ? ' — log' : ''}
-                    </div>
-                  )}
-                  {isCombinedPrimary && (
-                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
-                      combined
-                    </div>
-                  )}
-                  {isCombinedChild && (
-                    <div className="tag tag-blue" style={{ marginTop: 2, fontSize: 10 }}>
-                      ↔ with {combinedFrom}
-                    </div>
-                  )}
-                  {isRepeat && repeatBadge && (
-                    <div className={`tag ${repeatBadge === 'Lib' ? 'tag-blue' : 'tag-amber'}`} style={{ marginTop: 2, fontSize: 10 }}>
-                      repeat ({repeatBadge}){pending ? ' — log' : ''}
-                    </div>
-                  )}
-                  {!isRepeat && (lesson.sc || lesson.pc) && (
-                    <div
-                      className={`tag ${lesson.fsc ? '' : lesson.sc ? 'tag-blue' : 'tag-amber'}`}
-                      style={{
-                        marginTop: 2, fontSize: 10,
-                        // FSC gets its own loud red pill so it can't be
-                        // confused with a regular blue 'stage' badge.
-                        ...(lesson.fsc ? { background: '#b91c1c', color: '#fff', fontWeight: 700 } : null),
-                      }}
-                    >
-                      {lesson.fsc ? 'FINAL' : lesson.sc ? 'stage' : 'prog'}
-                    </div>
-                  )}
-                </div>
-
-                {/* Syllabus targets — read-only single numbers per lesson.
-                    Uses showLesson so combined pairs (e.g. 8.1 + 8.2) display
-                    the summed targets on one line. Split-continuation rows
-                    show "—" for the per-bucket sub-targets. Lib repeat rows
-                    use the course's "repeat buffer" target (1.0 hr dual on
-                    Commercial courses, 2.0 hr on everything else) — not the
-                    original lesson's full target — because a Liberty-funded
-                    repeat is a shorter targeted fix, not a redo of the whole
-                    lesson. */}
-                {(() => {
-                  const isLibRepeat = isRepeat && repeatBadge === 'Lib'
-                  const repeatDual  = course.repeatBufferDual ?? 2.0
-                  const dualTgt = isSplit ? 0 : isLibRepeat ? repeatDual : (showLesson.d || showLesson.sm)
-                  const soloTgt = isSplit ? 0 : isLibRepeat ? 0 : showLesson.s
-                  const xcTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.x
-                  const iTgt    = isSplit ? 0 : isLibRepeat ? 0 : showLesson.i
-                  const smTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.sm
-                  const totTgt  = splitDisplayTarget !== null
-                    ? splitDisplayTarget
-                    : isLibRepeat ? repeatDual : (showLesson.t)
-                  return (
-                    <>
-                      <TargetCell value={dualTgt} />
-                      <TargetCell value={soloTgt} />
-                      <TargetCell value={xcTgt} />
-                      <TargetCell value={iTgt} />
-                      <TargetCell value={smTgt} />
-                      <TargetCell value={totTgt} bold />
-                    </>
-                  )
-                })()}
-
-                {/* Actual flight time logged this attempt. For split chains
-                    we use the redistributed per-row target so over/under is
-                    meaningful within each session. */}
-                {(() => {
-                  const isLibRepeat = isRepeat && repeatBadge === 'Lib'
-                  const repeatDual  = course.repeatBufferDual ?? 2.0
-                  const actualFlt = (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0)
-                  const target    = splitDisplayTarget !== null
-                    ? splitDisplayTarget
-                    : isLibRepeat ? repeatDual : (showLesson.t || 0)
-                  const diff      = actualFlt - target
-                  const showDiff  = actualFlt > 0 && target > 0
-                  return (
-                    <>
-                      <div style={{ textAlign: 'center', fontWeight: 500 }}>
-                        {actualFlt > 0 ? actualFlt.toFixed(1) : '—'}
-                      </div>
-                      <div style={{
-                        textAlign: 'center', paddingLeft: 16, fontSize: 11, fontWeight: 600,
-                        color: !showDiff ? '#d1d5db' : diff > 0 ? '#b45309' : diff < 0 ? '#15803d' : '#6b7280',
-                      }}>
-                        {showDiff ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}` : '—'}
-                      </div>
-                    </>
-                  )
-                })()}
-
-                {/* Ground time logged this attempt — keeps the logged/target
-                    overlay. Lib repeat rows show the buffer ground target
-                    (0.7) rather than the original lesson's ground. */}
-                <LogCell logged={lg.ground} rec={(isRepeat && repeatBadge === 'Lib') ? 0.7 : showLesson.g} />
-
-                <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
-                  {isCombinedPrimary ? `${lesson.o} · ${siblingDef.o}` : lesson.o}
-                </span>
-
-                {/* Target Date cell — auto-spread from training start →
-                    deadline. Coloured amber when the actual completion
-                    landed after the target; green when on/before. Empty
-                    "—" until a pace or FSC date defines a deadline. */}
-                {(() => {
-                  const baseId = key.split('__r')[0].split('__s')[0]
-                  const target = targetDates[baseId]
-                  if (!target) {
-                    return <span style={{ textAlign: 'center', fontSize: 11, color: '#d1d5db' }}>—</span>
-                  }
-                  const shortTarget = new Date(target + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
-                  let color = '#6b7280'
-                  if (lg.date) {
-                    color = lg.date <= target ? '#15803d' : '#b45309'   // green if hit, amber if late
-                  }
-                  return (
-                    <span style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color }} title={`Target: ${target}`}>
-                      {shortTarget}
-                    </span>
-                  )
-                })()}
-
-                {/* Actual Date cell — inline editable for instructors */}
-                <span
-                  style={{ textAlign: 'center', fontSize: 11, color: '#6b7280', cursor: isInstructor && Object.keys(lg).length > 0 ? 'pointer' : 'default' }}
-                  onClick={(e) => {
-                    if (isInstructor && Object.keys(lg).length > 0) {
-                      e.stopPropagation()
-                      setEditingDate(key)
-                    }
-                  }}
-                >
-                  {editingDate === key ? (
-                    <input
-                      type="date"
-                      defaultValue={lg.date || new Date().toISOString().slice(0, 10)}
-                      autoFocus
-                      style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #1a3a5c', borderRadius: 4, width: '100%' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={(e) => { onLogFlight(student.id, viewCourse, key, { ...lg, date: e.target.value }); setEditingDate(null) }}
-                    />
-                  ) : (
-                    <span>
-                      {lg.date
-                        ? new Date(lg.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
-                        : '—'}
-                      {isInstructor && Object.keys(lg).length > 0 && (
-                        <span style={{ marginLeft: 4, color: '#d1d5db', fontSize: 10 }}>✏</span>
-                      )}
-                    </span>
-                  )}
-                </span>
-
-                <span style={{ textAlign: 'center' }}>
-                  {status === 'done'         && <span className="tag tag-green">done</span>}
-                  {status === 'partial'      && <span className="tag tag-amber">in prog</span>}
-                  {status === 'incomplete'   && <span className="tag tag-amber">incomplete</span>}
-                  {status === 'unsuccessful' && <span className="tag tag-red">unsuccessful</span>}
-                  {status === 'pending'      && (
-                    <span
-                      className="tag"
-                      style={{
-                        background: '#fff',
-                        color: '#6b7280',
-                        border: '1px solid #d1d5db',
-                        fontWeight: 600,
-                      }}
-                    >
-                      pending
-                    </span>
-                  )}
-                </span>
-              </div>
-            )
-          })}
-
-          {/* Totals row */}
-          {(() => {
-            const targetDual = course.lessons.reduce((s,l) => s + (l.d  || l.sm || 0), 0)
-            const targetSolo = course.lessons.reduce((s,l) => s + (l.s  || 0), 0)
-            const targetXC   = course.lessons.reduce((s,l) => s + (l.x  || 0), 0)
-            const targetInst = course.lessons.reduce((s,l) => s + (l.i  || 0), 0)
-            const targetSim  = course.lessons.reduce((s,l) => s + (l.sm || 0), 0)
-            const targetGnd  = course.lessons.reduce((s,l) => s + (l.g  || 0), 0)
-            // Over/Under total = sum of (actual − target) per lesson "attempt",
-            // where an attempt is the chain of original + split-continuations
-            // (those all sum vs ONE lesson target), and each repeat is its own
-            // attempt vs the lesson target. Combined-primary rows include the
-            // sibling lesson's target; combined-child rows are skipped (their
-            // hours are recorded on the primary).
-            let overUnderTot = 0
-            let anyDiff = false
-            const hours = (lg) => (lg?.dual || 0) + (lg?.solo || 0) + (lg?.sim || 0)
-            course.lessons.forEach((lesson) => {
-              const origLg = sLogs[lesson.id]
-              // Combined child: its hours are folded into the primary row.
-              if (origLg?.combinedFrom) return
-
-              // Original + splits → one summed attempt vs the lesson target
-              let chainActual = hours(origLg)
-              splitKeysFor(sLogs, lesson.id).forEach((sk) => { chainActual += hours(sLogs[sk]) })
-
-              let target = lesson.t || 0
-              // If this lesson is the primary of a combined pair, add sibling target.
-              if (lesson.combinableWith) {
-                const sibLg = sLogs[lesson.combinableWith]
-                if (sibLg?.combinedFrom === lesson.id) {
-                  const sibDef = course.lessons.find((l) => l.id === lesson.combinableWith)
-                  if (sibDef) target += (sibDef.t || 0)
-                }
-              }
-
-              if (chainActual > 0 && target > 0) {
-                overUnderTot += (chainActual - target)
-                anyDiff = true
-              }
-
-              // Each repeat: its own attempt vs the (single) lesson target
-              repeatKeysFor(sLogs, lesson.id).forEach((rk) => {
-                const r = hours(sLogs[rk])
-                if (r > 0 && (lesson.t || 0) > 0) {
-                  overUnderTot += (r - (lesson.t || 0))
-                  anyDiff = true
-                }
-              })
-            })
-            return (
-              <div style={{
-                display: 'grid', gridTemplateColumns: COLS, gap: 4,
-                padding: '8px 10px', background: '#f8fafc',
-                fontSize: 12, fontWeight: 600, borderTop: '2px solid #e5e7eb',
-                minWidth: 1080,
-              }}>
-                <span>Totals</span>
-                <span style={{ textAlign: 'center' }}>{fmt(targetDual)}</span>
-                <span style={{ textAlign: 'center' }}>{fmt(targetSolo)}</span>
-                <span style={{ textAlign: 'center' }}>{fmt(targetXC)}</span>
-                <span style={{ textAlign: 'center' }}>{fmt(targetInst)}</span>
-                <span style={{ textAlign: 'center' }}>{fmt(targetSim)}</span>
-                <span style={{ textAlign: 'center' }}>{parseFloat(course.targetTotal).toFixed(1)}</span>
-                <span style={{ textAlign: 'center' }}>{fmt(totFlown)}</span>
-                <span style={{
-                  textAlign: 'center', paddingLeft: 16,
-                  color: overUnderTot > 0 ? '#b45309' : overUnderTot < 0 ? '#15803d' : '#6b7280',
-                }}>
-                  {anyDiff ? `${overUnderTot > 0 ? '+' : ''}${overUnderTot.toFixed(1)}` : '—'}
-                </span>
-                <TotalCell logged={totGround} rec={targetGnd} />
-                <span />
-                <span />
-                <span />
-                <span style={{ textAlign: 'center' }}>{progress.completed}/{progress.total}</span>
-              </div>
-            )
-          })()}
-        </div>
+        <LessonTable
+          student={student}
+          course={course}
+          viewCourse={viewCourse}
+          sLogs={sLogs}
+          progress={progress}
+          isInstructor={isInstructor}
+          targetDates={targetDates}
+          repeatBillingType={repeatBillingType}
+          totFlown={totFlown}
+          totGround={totGround}
+          editingDate={editingDate}
+          setEditingDate={setEditingDate}
+          onLogFlight={onLogFlight}
+          setLogLesson={setLogLesson}
+        />
       </div>
 
       {/* Replace syllabus — destructive footer action for fixing a wrong
@@ -1890,124 +1207,6 @@ export default function StudentDetail({
           onUpdateAccount={onUpdateAccount}
           onClose={() => setShowAcctSettings(false)}
         />
-      )}
-    </div>
-  )
-}
-
-function InstructorContact({ label, ins }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 2 }}>{ins.name}</div>
-      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-        {ins.cert}
-        {ins.lineRate === 110 && <span style={{ marginLeft: 6, color: '#dc2626' }}>· Chief</span>}
-      </div>
-      {(ins.phone || ins.email) ? (
-        <div style={{ fontSize: 12, color: '#374151', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {ins.phone && (
-            <a href={`tel:${ins.phone.replace(/[^\d+]/g, '')}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
-              {ins.phone}
-            </a>
-          )}
-          {ins.email && (
-            <a href={`mailto:${ins.email}`} style={{ color: '#1a3a5c', textDecoration: 'none' }}>
-              {ins.email}
-            </a>
-          )}
-        </div>
-      ) : (
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, fontStyle: 'italic' }}>No contact info on file</div>
-      )}
-    </div>
-  )
-}
-
-function StatCard({ label, value, valueColor, valueSize = 20, children, onClick }) {
-  const interactive = !!onClick
-  return (
-    <div
-      className="stat-card"
-      onClick={onClick}
-      style={interactive ? { cursor: 'pointer', transition: 'box-shadow .12s, transform .12s' } : undefined}
-      onMouseEnter={interactive ? (e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(26,58,92,.08)' } : undefined}
-      onMouseLeave={interactive ? (e) => { e.currentTarget.style.boxShadow = '' } : undefined}
-      title={interactive ? 'Click to open detailed ledger' : undefined}
-    >
-      <div className="stat-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>{label}</span>
-        {interactive && <span style={{ fontSize: 10, color: '#9ca3af' }}>▸</span>}
-      </div>
-      <div className="stat-val" style={{ fontSize: valueSize, color: valueColor }}>{value}</div>
-      {children}
-    </div>
-  )
-}
-
-/**
- * Single read-only target value (used for Dual / Solo / XC / Instr / Sim columns,
- * which mirror the syllabus and are not edited per attempt).
- */
-function TargetCell({ value, bold = false }) {
-  const has = (value || 0) > 0
-  return (
-    <div style={{
-      textAlign: 'center', fontSize: 12,
-      color: has ? '#111827' : '#d1d5db',
-      fontWeight: bold ? 600 : 400,
-    }}>
-      {has ? value.toFixed(1) : '—'}
-    </div>
-  )
-}
-
-/**
- * Ground column cell — shows logged hours with the recommended target below in blue.
- * Turns green once logged meets or exceeds the recommendation.
- */
-function LogCell({ logged, rec }) {
-  const val = logged || 0
-  const hasRec = rec > 0
-  const over = hasRec && val > rec
-  const met  = hasRec && val >= rec && !over
-  // When logged exactly equals the target, show one number with a ✓ instead of
-  // stacking the same value twice (which read as a UI glitch in feedback).
-  if (met) {
-    return (
-      <div style={{ textAlign: 'center', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-        {val.toFixed(1)} ✓
-      </div>
-    )
-  }
-  const valColor = val === 0 ? '#d1d5db' : (over ? '#dc2626' : '#111827')
-  return (
-    <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
-      <div style={{ fontSize: 12, color: valColor, fontWeight: over ? 600 : 400 }}>
-        {val > 0 ? val.toFixed(1) : '—'}
-      </div>
-      {hasRec && (
-        <div style={{ fontSize: 9, fontWeight: 600, color: over ? '#dc2626' : '#2d6ab4' }}>
-          {rec.toFixed(1)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * Ground totals cell — shows sum logged and course-wide recommended total.
- */
-function TotalCell({ logged, rec }) {
-  const hasRec = rec > 0
-  const met = hasRec && logged >= rec
-  return (
-    <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
-      <div style={{ fontSize: 12 }}>{logged > 0 ? logged.toFixed(1) : '—'}</div>
-      {hasRec && (
-        <div style={{ fontSize: 9, fontWeight: 600, color: met ? '#16a34a' : '#2d6ab4' }}>
-          {rec.toFixed(1)} rec
-        </div>
       )}
     </div>
   )
