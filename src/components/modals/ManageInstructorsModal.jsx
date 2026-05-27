@@ -347,57 +347,16 @@ export default function ManageInstructorsModal({
                         )
                       }
                       return (
-                        <div
+                        <InstructorRow
                           key={`${ins.name}-${ins.base}`}
-                          className="instr-pill"
-                          style={isMe ? { borderColor: 'var(--aa-red)', background: '#fef2f2' } : undefined}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                              <span style={{ fontWeight: 500 }}>{ins.name}</span>
-                              {isMe && <span className="tag" style={{ marginLeft: 6, background: 'var(--aa-red)', color: '#fff' }}>YOU</span>}
-                              <span className="tag tag-blue" style={{ marginLeft: 8 }}>{ins.cert}</span>
-                              {ins.lineRate === 110 && (
-                                <span className="tag" style={{ background: 'var(--aa-red)', color: '#fff', marginLeft: 4 }}>Chief</span>
-                              )}
-                              {ins.stageCheck && (
-                                <span className="tag" style={{ background: '#fef3c7', color: '#92400e', marginLeft: 4 }}>Stage Check</span>
-                              )}
-                              {filter === 'All' && ins.base && (
-                                <span className="tag tag-gray" style={{ marginLeft: 4 }}>{ins.base}</span>
-                              )}
-                            </div>
-                            {(ins.phone || ins.email) && (
-                              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                                {ins.phone && <span><a href={`tel:${ins.phone}`} style={{ color: '#6b7280' }}>{ins.phone}</a></span>}
-                                {ins.email && <span><a href={`mailto:${ins.email}`} style={{ color: '#6b7280' }}>{ins.email}</a></span>}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            {/* Non-chiefs can only edit their own profile;
-                                chiefs can edit anyone. Delete also chief-only. */}
-                            {onUpdate && (isChief || isMe) && (
-                              <button
-                                className="instr-remove-btn"
-                                title={isMe ? 'Edit your info' : 'Edit'}
-                                style={{ color: '#6b7280' }}
-                                onClick={() => startEdit(ins)}
-                              >
-                                ✏
-                              </button>
-                            )}
-                            {isChief && (
-                            <button
-                              className="instr-remove-btn"
-                              title="Remove"
-                              onClick={async () => { if (await toast.confirm(`Remove ${ins.name} from ${ins.base}?`)) onDelete(ins.name, ins.base) }}
-                            >
-                              ✕
-                            </button>
-                            )}
-                          </div>
-                        </div>
+                          ins={ins}
+                          isMe={isMe}
+                          isChief={isChief}
+                          canEdit={!!onUpdate && (isChief || isMe)}
+                          showBaseTag={filter === 'All' && !!ins.base}
+                          onEdit={() => startEdit(ins)}
+                          onRemove={async () => { if (await toast.confirm(`Remove ${ins.name} from ${ins.base}?`)) onDelete(ins.name, ins.base) }}
+                        />
                       )
                     })}
                   </div>
@@ -410,6 +369,75 @@ export default function ManageInstructorsModal({
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Close</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Single instructor row. Lifts Edit/Remove buttons into a hover state so
+ * the list reads calmly when scanning — same pattern as the student
+ * rows on ChiefDash. Hovering anywhere on the pill fades the buttons in.
+ */
+function InstructorRow({ ins, isMe, isChief, canEdit, showBaseTag, onEdit, onRemove }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      className="instr-pill"
+      style={isMe ? { borderColor: 'var(--aa-red)', background: '#fef2f2' } : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+          <span style={{ fontWeight: 500 }}>{ins.name}</span>
+          {isMe && <span className="tag" style={{ marginLeft: 6, background: 'var(--aa-red)', color: '#fff' }}>YOU</span>}
+          <span className="tag tag-blue" style={{ marginLeft: 8 }}>{ins.cert}</span>
+          {ins.lineRate === 110 && (
+            <span className="tag" style={{ background: 'var(--aa-red)', color: '#fff', marginLeft: 4 }}>Chief</span>
+          )}
+          {ins.stageCheck && (
+            <span className="tag" style={{ background: '#fef3c7', color: '#92400e', marginLeft: 4 }}>Stage Check</span>
+          )}
+          {showBaseTag && (
+            <span className="tag tag-gray" style={{ marginLeft: 4 }}>{ins.base}</span>
+          )}
+        </div>
+        {(ins.phone || ins.email) && (
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {ins.phone && <span><a href={`tel:${ins.phone}`} style={{ color: '#6b7280' }}>{ins.phone}</a></span>}
+            {ins.email && <span><a href={`mailto:${ins.email}`} style={{ color: '#6b7280' }}>{ins.email}</a></span>}
+          </div>
+        )}
+      </div>
+      <div
+        style={{
+          display: 'flex', gap: 4,
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity .15s',
+          pointerEvents: hovered ? 'auto' : 'none',
+        }}
+      >
+        {canEdit && (
+          <button
+            className="btn btn-sm"
+            title={isMe ? 'Edit your info' : 'Edit'}
+            style={{ fontSize: 11, padding: '2px 8px', color: '#6b7280' }}
+            onClick={onEdit}
+          >
+            Edit
+          </button>
+        )}
+        {isChief && (
+          <button
+            className="btn btn-sm"
+            title="Remove this instructor"
+            style={{ fontSize: 11, padding: '2px 8px', color: '#dc2626', borderColor: '#fecaca' }}
+            onClick={onRemove}
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   )
