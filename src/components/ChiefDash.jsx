@@ -579,6 +579,8 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
     .replace('Multi Engine Instructor', 'MEI')
 
   const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const reveal = hovered || focused
   const [editingPrimary, setEditingPrimary] = useState(false)
 
   // Instructors available at this student's base (used for dropdown options).
@@ -607,6 +609,8 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
       onClick={onView}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}
     >
       {/* Avatar */}
       <div style={{
@@ -812,9 +816,9 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
           flexDirection: 'column',
           gap: 3,
           alignItems: 'flex-end',
-          opacity: hovered ? 1 : 0,
+          opacity: reveal ? 1 : 0,
           transition: 'opacity .15s',
-          pointerEvents: hovered ? 'auto' : 'none',
+          pointerEvents: reveal ? 'auto' : 'none',
         }}
       >
         <button

@@ -464,13 +464,22 @@ export default function StudentDetail({
                 onClick={async () => {
                   const ok = await toast.confirm(
                     `Delete ${viewCourse} from ${student.name}'s course history?\n\n` +
-                    `This permanently removes the course entry and ALL logged flights for it. ` +
-                    `Training Reviews tied to this course will also no longer be visible.\n\n` +
+                    `This permanently removes the course entry, ALL logged flights for it, ` +
+                    `AND every Training Review written for that course.\n\n` +
                     `This cannot be undone.`
                   )
                   if (!ok) return
                   onUpdateStudent(student.id, {
                     courseHistory: (student.courseHistory || []).filter((h) => h.course !== viewCourse),
+                    // Cascade-delete TRs tied to this course so the audit trail
+                    // doesn't keep ghost entries pointing at a course that no
+                    // longer exists. Matches by courseName (preferred) with a
+                    // back-compat label-prefix fallback.
+                    trainingReviews: (student.trainingReviews || []).filter((tr) => (
+                      tr.courseName
+                        ? tr.courseName !== viewCourse
+                        : !(typeof tr.course === 'string' && tr.course.startsWith(viewCourse))
+                    )),
                   })
                   onClearAllLogs?.(student.id, viewCourse)
                   setViewCourse(student.course)

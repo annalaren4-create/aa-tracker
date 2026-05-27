@@ -381,12 +381,18 @@ export default function ManageInstructorsModal({
  */
 function InstructorRow({ ins, isMe, isChief, canEdit, showBaseTag, onEdit, onRemove }) {
   const [hovered, setHovered] = useState(false)
+  // Also reveal when any descendant has keyboard focus (Tab nav) so the
+  // action buttons aren't trapped behind opacity:0 / pointer-events:none.
+  const [focused, setFocused] = useState(false)
+  const reveal = hovered || focused
   return (
     <div
       className="instr-pill"
       style={isMe ? { borderColor: 'var(--aa-red)', background: '#fef2f2' } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
@@ -413,9 +419,9 @@ function InstructorRow({ ins, isMe, isChief, canEdit, showBaseTag, onEdit, onRem
       <div
         style={{
           display: 'flex', gap: 4,
-          opacity: hovered ? 1 : 0,
+          opacity: reveal ? 1 : 0,
           transition: 'opacity .15s',
-          pointerEvents: hovered ? 'auto' : 'none',
+          pointerEvents: reveal ? 'auto' : 'none',
         }}
       >
         {canEdit && (
