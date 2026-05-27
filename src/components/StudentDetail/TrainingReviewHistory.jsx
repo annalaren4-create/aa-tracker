@@ -1,4 +1,5 @@
 import { fmtShortDate } from '../../utils/terms'
+import { useToast } from '../Toast'
 
 /**
  * Audit-trail list of Training Reviews saved on a student, scoped to the
@@ -11,7 +12,8 @@ import { fmtShortDate } from '../../utils/terms'
  * substring match against the display `course` label so historical data
  * still surfaces correctly.
  */
-export default function TrainingReviewHistory({ student, viewCourse }) {
+export default function TrainingReviewHistory({ student, viewCourse, canDelete = false, onDelete }) {
+  const toast = useToast()
   const all = student.trainingReviews || []
   const reviews = viewCourse
     ? all.filter((tr) => (
@@ -35,12 +37,37 @@ export default function TrainingReviewHistory({ student, viewCourse }) {
       <div style={{ display: 'grid', gap: 8 }}>
         {sorted.map((tr) => (
           <details key={tr.id} style={{ border: '1px solid #f1f5f9', borderRadius: 6, padding: '6px 10px', background: '#fafafa' }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12, color: '#374151', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12, color: '#374151', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', listStyle: 'none' }}>
+              <span className="tr-chevron" style={{ color: '#1a3a5c', fontSize: 12, fontWeight: 700, lineHeight: 1, transition: 'transform .15s', display: 'inline-block', width: 12, textAlign: 'center' }}>▼</span>
               <strong>{tr.date ? fmtShortDate(tr.date) : '—'}</strong>
               <span style={{ color: '#6b7280' }}>{tr.course}</span>
               <span style={{ color: '#9ca3af' }}>· written by {tr.writtenBy || '—'}</span>
               {tr.designeeSig && tr.studentSig && (
                 <span className="tag tag-green" style={{ fontSize: 10 }}>signed</span>
+              )}
+              {canDelete && onDelete && (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const ok = await toast.confirm(
+                      `Delete this Training Review (${tr.date ? fmtShortDate(tr.date) : 'no date'} · ${tr.course || ''})?\n\n` +
+                      `This removes it from the student's audit trail. If it was the most recent TR for this course, the "Training Review required" banner may reappear.`
+                    )
+                    if (ok) onDelete(tr.id)
+                  }}
+                  title="Delete this Training Review"
+                  style={{
+                    marginLeft: 'auto', border: 'none', background: 'transparent',
+                    color: '#9ca3af', fontSize: 14, cursor: 'pointer', padding: '2px 6px',
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.background = '#fef2f2' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.background = 'transparent' }}
+                >
+                  ✕
+                </button>
               )}
             </summary>
             <div style={{ marginTop: 8, fontSize: 11, color: '#374151', display: 'grid', gap: 6 }}>

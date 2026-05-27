@@ -344,6 +344,13 @@ export default function App() {
     if (s.id !== id) return s
     return { ...s, trainingReviews: [...(s.trainingReviews || []), review] }
   }))
+  // Remove a single Training Review from a student's audit trail. Used by
+  // chiefs to clean up mistaken entries — the banner's "covered" check
+  // will re-evaluate against whatever's left.
+  const deleteTrainingReview = (id, reviewId) => saveStudents(students.map((s) => {
+    if (s.id !== id) return s
+    return { ...s, trainingReviews: (s.trainingReviews || []).filter((tr) => tr.id !== reviewId) }
+  }))
   // "Remove from dashboard" — drops the student record but keeps the login
   // account so the student can be re-added later (or just sign in to view their
   // history). Use this for graduations, transfers, leaves of absence.
@@ -591,6 +598,7 @@ export default function App() {
       onClearAllLogs={clearAllLogsForCourse}
       onUpdateStudent={updateStudent}
       onSaveTrainingReview={saveTrainingReview}
+      onDeleteTrainingReview={deleteTrainingReview}
       onBack={() => {
         if (currentAccount?.role === 'chief') setView('chief')
         else if (currentAccount?.role === 'instructor') setView('dash')

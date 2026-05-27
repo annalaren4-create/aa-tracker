@@ -125,6 +125,12 @@ input[type="checkbox"], input[type="radio"] {
   width: auto;
   padding: 0;
 }
+
+/* <details>/<summary> chevron — rotate when expanded. Hide the browser's
+   default disclosure marker on <summary>s tagged with display:flex
+   (Safari/Chrome show a stray triangle outside the flex layout). */
+summary::-webkit-details-marker { display: none; }
+details[open] > summary .tr-chevron { transform: rotate(180deg); }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--aa-red);

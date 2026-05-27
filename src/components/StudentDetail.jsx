@@ -12,10 +12,12 @@ import { InstructorContact, StatCard } from './StudentDetail/cells'
 import CourseTransitionBanner from './StudentDetail/CourseTransitionBanner'
 import TrainingReviewHistory from './StudentDetail/TrainingReviewHistory'
 import LessonTable from './StudentDetail/LessonTable'
+import { useToast } from './Toast'
 
 export default function StudentDetail({
-  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onClearAllLogs, onUpdateStudent, onSaveTrainingReview, onBack, calcProgress,
+  student, logs, instructors, isInstructor, account, onUpdateAccount, onLogFlight, onClearLesson, onClearAllLogs, onUpdateStudent, onSaveTrainingReview, onDeleteTrainingReview, onBack, calcProgress,
 }) {
+  const toast = useToast()
   const [logLesson, setLogLesson] = useState(null)
   const [showTR, setShowTR] = useState(false)
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
@@ -189,30 +191,40 @@ export default function StudentDetail({
   const policyViolations = [...stageCheckLibViolations, ...extraLibViolations]
   const hasTrTrigger = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
 
-  // Suppress the "Training Review required" banner once a signed TR has been
-  // generated covering the current OOP state. The banner comes back the
-  // moment another OOP repeat is logged with a date past the latest TR.
-  const latestOopDate = (() => {
-    const dates = [
-      ...oopLessons.map((l) => l.date).filter(Boolean),
-      ...policyViolations.map((l) => l.date).filter(Boolean),
-      ...multiRepeatLessons.flatMap((l) =>
-        repeatKeysFor(sLogs, l.id).map((rk) => sLogs[rk]?.date)
-      ).filter(Boolean),
-    ]
-    return dates.length ? dates.sort().slice(-1)[0] : null
+  // Suppress the "Training Review required" banner once a TR has been
+  // generated covering the current OOP state. The banner reappears the
+  // moment a NEW OOP trigger appears (any new repeatedOop log, new
+  // stage-check repeat, or additional repeat on an existing lesson).
+  //
+  // Approach: compute a "fingerprint" of the current OOP triggers and
+  // compare against the snapshot the latest TR saved when it was
+  // generated. Different fingerprints → a new OOP exists that the TR
+  // didn't cover → banner returns.
+  const oopFingerprint = (() => {
+    const parts = []
+    oopLessons.forEach((l)        => parts.push(`oop:${l.id}`))
+    policyViolations.forEach((l)  => parts.push(`viol:${l.id}`))
+    multiRepeatLessons.forEach((l) => {
+      parts.push(`multi:${l.id}:${repeatKeysFor(sLogs, l.id).length}`)
+    })
+    return parts.sort().join('|')
   })()
   const trCovered = (() => {
-    if (!latestOopDate) return false
+    if (!oopFingerprint) return false
     const courseTRs = (student.trainingReviews || []).filter((tr) =>
       tr.courseName === viewCourse ||
       (!tr.courseName && typeof tr.course === 'string' && tr.course.startsWith(viewCourse))
     )
-    const latestSignedTR = courseTRs
-      .filter((tr) => tr.designeeSig && tr.studentSig)
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]
-    if (!latestSignedTR) return false
-    return (latestSignedTR.date || '') >= latestOopDate
+    // Compare against the LATEST TR that carries a fingerprint snapshot.
+    // Pre-snapshot TRs (saved before this feature shipped) remain in the
+    // audit trail but never silence the banner — every chief gets prompted
+    // to generate a fresh TR for the current OOP state, which seeds a
+    // proper snapshot for next time.
+    const latestWithFp = courseTRs
+      .filter((tr) => !!tr.oopFingerprint)
+      .sort((a, b) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''))[0]
+    if (!latestWithFp) return false
+    return latestWithFp.oopFingerprint === oopFingerprint
   })()
   const needsTR = hasTrTrigger && !trCovered
 
@@ -294,7 +306,7 @@ export default function StudentDetail({
                     style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
                     title="Click to change course"
                   >
-                    {viewCourse} ✏
+                    {viewCourse} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginLeft: 5, fontWeight: 700 }}>▾</span>
                   </span>
                 )
               ) : (
@@ -321,7 +333,7 @@ export default function StudentDetail({
                     style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
                     title="Click to change aircraft"
                   >
-                    {student.aircraft} ✏
+                    {student.aircraft} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginLeft: 5, fontWeight: 700 }}>▾</span>
                   </span>
                 )
               ) : student.aircraft}
@@ -359,7 +371,7 @@ export default function StudentDetail({
                       style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
                       title="Click to change primary instructor"
                     >
-                      {primaryName} ✏
+                      {primaryName} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginLeft: 5, fontWeight: 700 }}>▾</span>
                     </span>
                   )
                 ) : primaryName}
@@ -384,7 +396,7 @@ export default function StudentDetail({
                       style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
                       title="Click to change secondary instructor"
                     >
-                      {secondaryName || '— none —'} ✏
+                      {secondaryName || '— none —'} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginLeft: 5, fontWeight: 700 }}>▾</span>
                     </span>
                   )
                 ) : (secondaryName || '')}
@@ -442,6 +454,31 @@ export default function StudentDetail({
               <span style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 12 }}>
                 Read-only · historical record
               </span>
+            )}
+            {isViewingPastCourse && isInstructor && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ fontSize: 11, color: '#dc2626', borderColor: '#fecaca' }}
+                title="Remove this past course from the student's history"
+                onClick={async () => {
+                  const ok = await toast.confirm(
+                    `Delete ${viewCourse} from ${student.name}'s course history?\n\n` +
+                    `This permanently removes the course entry and ALL logged flights for it. ` +
+                    `Training Reviews tied to this course will also no longer be visible.\n\n` +
+                    `This cannot be undone.`
+                  )
+                  if (!ok) return
+                  onUpdateStudent(student.id, {
+                    courseHistory: (student.courseHistory || []).filter((h) => h.course !== viewCourse),
+                  })
+                  onClearAllLogs?.(student.id, viewCourse)
+                  setViewCourse(student.course)
+                  toast.success(`${viewCourse} removed from history.`)
+                }}
+              >
+                Delete this course
+              </button>
             )}
           </div>
         )}
@@ -538,7 +575,12 @@ export default function StudentDetail({
             written for. When the student moves to a new course, this
             section clears out; toggling back to the past course via
             "View past course" surfaces those reviews again. */}
-        <TrainingReviewHistory student={student} viewCourse={viewCourse} />
+        <TrainingReviewHistory
+          student={student}
+          viewCourse={viewCourse}
+          canDelete={isInstructor}
+          onDelete={onDeleteTrainingReview ? (reviewId) => onDeleteTrainingReview(student.id, reviewId) : null}
+        />
 
         {/* Stats — Progress always shown. Est. cost + LU balance shown
             only to instructors. Out-of-pocket card appears for anyone
@@ -1048,6 +1090,7 @@ export default function StudentDetail({
           instructors={instructors}
           oopLessons={oopLessons}
           policyViolations={policyViolations}
+          oopFingerprint={oopFingerprint}
           onSaveReview={onSaveTrainingReview}
           onClose={() => setShowTR(false)}
         />

@@ -36,7 +36,7 @@ import { useToast } from '../Toast'
  *      success toast, and add a Download link in the TR history list.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], onSaveReview, onClose }) {
+export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], oopFingerprint = '', onSaveReview, onClose }) {
   const toast = useToast()
   const today = new Date().toISOString().slice(0, 10)
   const course = COURSES[student.course]
@@ -115,6 +115,11 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
       // the course-history switcher. Captured at save time so renaming the
       // current course later doesn't orphan old reviews.
       courseName: student.course,
+      // Snapshot of the OOP-trigger fingerprint at save time. The
+      // "Training Review required" banner stays hidden as long as this
+      // matches the current fingerprint; the moment a new OOP repeat is
+      // logged the fingerprint changes and the banner returns.
+      oopFingerprint,
       writtenBy: form.writtenBy,
       rationale: form.rationale,
       outcomes: form.outcomes,

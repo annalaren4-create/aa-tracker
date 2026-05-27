@@ -668,7 +668,7 @@ function StudentRow({ student, progress: p, pace, behind, striped, myName, instr
                 style={{ color: '#374151', borderBottom: '1px dashed #d1d5db', cursor: 'pointer' }}
                 title="Click to change primary instructor"
               >
-                {student.primaryInstructor} ✏
+                {student.primaryInstructor} <span style={{ fontSize: 14, color: '#6b7280', marginLeft: 4, fontWeight: 700 }}>▾</span>
               </span>
             )}
           </div>

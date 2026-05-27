@@ -384,7 +384,7 @@ export default function LessonTable({
                     ? new Date(lg.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
                     : '—'}
                   {isInstructor && Object.keys(lg).length > 0 && (
-                    <span style={{ marginLeft: 4, color: '#d1d5db', fontSize: 10 }}>✏</span>
+                    <span style={{ marginLeft: 3, color: '#9ca3af', fontSize: 11, fontWeight: 700 }}>▾</span>
                   )}
                 </span>
               )}
