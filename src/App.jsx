@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { lsGet, lsSet, uid } from './utils/storage'
 import { getAccounts, deleteAccount } from './utils/auth'
 import { getCurrentAccount, signOutSupabase } from './utils/supabaseAuth'
+import { fetchInstructors, insertInstructor, updateInstructorRow, deleteInstructorRow } from './lib/supabaseData'
 import { calcProgress } from './utils/calculations'
 import { SEED_STUDENTS, SEED_INSTRUCTORS } from './data/seed'
 import Home from './components/Home'
@@ -298,14 +299,10 @@ export default function App() {
     const req = roleRequests.find((r) => r.id === id)
     if (!req) return
     if (approve) {
-      // Apply the change
-      const next = instructors.map((i) => {
-        if (i.name !== req.instructorName || i.base !== req.base) return i
-        if (req.field === 'chief')      return { ...i, lineRate: 110 }
-        if (req.field === 'stageCheck') return { ...i, stageCheck: true }
-        return i
-      })
-      saveInstructors(next)
+      // Apply the change via the cloud-backed updater (fire-and-forget;
+      // it updates local state optimistically and persists to Supabase).
+      if (req.field === 'chief')           updateInstructor(req.instructorName, req.base, { lineRate: 110 })
+      else if (req.field === 'stageCheck') updateInstructor(req.instructorName, req.base, { stageCheck: true })
     }
     saveRoleRequests(roleRequests.filter((r) => r.id !== id))
   }
@@ -330,7 +327,6 @@ export default function App() {
   /* ── persistence helpers ─────────────────────────────────────── */
   const saveStudents = (arr) => { setStudents(arr); lsSet('students', arr) }
   const saveLogs = (obj) => { setLogs(obj); lsSet('logs', obj) }
-  const saveInstructors = (arr) => { setInstructors(arr); lsSet('instructors', arr) }
 
   /* ── student CRUD ────────────────────────────────────────────── */
   const addStudent = (data) => {
@@ -370,16 +366,40 @@ export default function App() {
     saveStudents(students.filter((s) => s.id !== id))
   }
 
-  /* ── instructor roster ───────────────────────────────────────── */
-  const addInstructor = (ins) => {
-    if (!instructors.find((i) => i.name === ins.name)) saveInstructors([...instructors, ins])
+  /* ── instructor roster (cloud-backed) ─────────────────────────── */
+  // The roster now lives in Supabase. Each op updates local state
+  // optimistically (instant UI) and persists to the DB in the
+  // background; on failure we surface a toast. Reads load on login via
+  // the effect below.
+  const addInstructor = async (ins) => {
+    if (instructors.find((i) => i.name === ins.name && i.base === ins.base)) return
+    try {
+      const created = await insertInstructor(ins, currentAccount?.schoolId)
+      setInstructors((prev) => [...prev, created])
+    } catch (e) {
+      console.error('Add instructor failed:', e)
+      toast.error('Could not add instructor to the cloud.')
+    }
   }
-  const deleteInstructor = (name, base) => saveInstructors(
-    instructors.filter((i) => !(i.name === name && i.base === base))
-  )
+
+  const deleteInstructor = async (name, base) => {
+    const found = instructors.find((i) => i.name === name && i.base === base)
+    if (!found) return
+    setInstructors((prev) => prev.filter((i) => i !== found))
+    try {
+      await deleteInstructorRow(found.id)
+    } catch (e) {
+      console.error('Delete instructor failed:', e)
+      toast.error('Could not remove instructor from the cloud.')
+      setInstructors((prev) => [...prev, found]) // roll back
+    }
+  }
+
   // Update a specific instructor entry (identified by original name + base, since
   // a person can appear at multiple bases as separate entries).
-  const updateInstructor = (origName, origBase, changes) => {
+  const updateInstructor = async (origName, origBase, changes) => {
+    const found = instructors.find((i) => i.name === origName && i.base === origBase)
+    if (!found) return
     // If the rename collides with another existing instructor at the same base, bail.
     if (changes.name || changes.base) {
       const targetName = changes.name ?? origName
@@ -389,9 +409,16 @@ export default function App() {
       )
       if (collision) { toast.error(`${targetName} is already listed at ${targetBase}`); return }
     }
-    saveInstructors(instructors.map((i) =>
-      i.name === origName && i.base === origBase ? { ...i, ...changes } : i
-    ))
+    const merged = { ...found, ...changes }
+    setInstructors((prev) => prev.map((i) => (i === found ? merged : i)))
+    try {
+      const saved = await updateInstructorRow(found.id, merged, currentAccount?.schoolId)
+      setInstructors((prev) => prev.map((i) => (i.id === saved.id ? saved : i)))
+    } catch (e) {
+      console.error('Update instructor failed:', e)
+      toast.error('Could not save instructor changes to the cloud.')
+      setInstructors((prev) => prev.map((i) => (i.id === found.id ? found : i))) // roll back
+    }
   }
 
   /* ── flight logging ──────────────────────────────────────────── */
@@ -500,6 +527,21 @@ export default function App() {
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Load the instructor roster from Supabase once we know the signed-in
+  // user's school. Replaces the localStorage seed with the live roster.
+  useEffect(() => {
+    if (!currentAccount?.schoolId) return
+    let active = true
+    fetchInstructors()
+      .then((list) => { if (active && list) setInstructors(list) })
+      .catch((e) => {
+        console.error('Load roster failed:', e)
+        toast.error('Could not load the instructor roster from the cloud.')
+      })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentAccount?.schoolId])
 
   // Sync App-level currentAccount after the user changes their own username
   // or password in the AccountSettingsModal — keeps role/name etc. intact
