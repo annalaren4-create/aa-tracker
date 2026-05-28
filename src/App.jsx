@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { lsGet, lsSet, uid } from './utils/storage'
 import { getAccounts, deleteAccount } from './utils/auth'
+import { getCurrentAccount, signOutSupabase } from './utils/supabaseAuth'
 import { calcProgress } from './utils/calculations'
 import { SEED_STUDENTS, SEED_INSTRUCTORS } from './data/seed'
 import Home from './components/Home'
@@ -311,6 +312,9 @@ export default function App() {
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [activeLocation, setActiveLocation] = useState('All')
   const [currentAccount, setCurrentAccount] = useState(null)
+  // Gate first paint until the Supabase session check resolves, so a
+  // logged-in user doesn't see the sign-in screen flash on reload.
+  const [authReady, setAuthReady] = useState(false)
 
   /* ── cross-tab sync: keep all portals in sync when another tab writes ── */
   useEffect(() => {
@@ -477,10 +481,25 @@ export default function App() {
     }
   }
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    await signOutSupabase()
     setCurrentAccount(null)
     setView('home')
   }
+
+  // Restore an existing Supabase session on page load so a refresh
+  // doesn't bounce the user back to the home screen. Runs once on mount.
+  useEffect(() => {
+    let active = true
+    getCurrentAccount()
+      .then((acct) => {
+        if (!active) return
+        if (acct) handleLoginSuccess(acct)
+      })
+      .finally(() => { if (active) setAuthReady(true) })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Sync App-level currentAccount after the user changes their own username
   // or password in the AccountSettingsModal — keeps role/name etc. intact
@@ -493,6 +512,25 @@ export default function App() {
   const isInstructor = currentAccount?.role === 'instructor' || currentAccount?.role === 'chief'
 
   /* ── routing ─────────────────────────────────────────────────── */
+  // Hold first paint until we know whether a session exists. Avoids the
+  // sign-in screen flashing before session restore routes a logged-in
+  // user to their dashboard.
+  if (!authReady) return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(180deg, #e8eef5 0%, #f8fafc 35%, #ffffff 100%)',
+    }}>
+      <img
+        src="/aviation-adventures-logo.png"
+        alt="Aviation Adventures"
+        style={{ maxWidth: 220, width: '60%', height: 'auto', opacity: 0.9 }}
+      />
+    </div>
+  )
+
   if (view === 'home') return (
     <Home
       onSignIn={() => setView('sign-in')}

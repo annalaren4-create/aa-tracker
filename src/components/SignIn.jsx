@@ -1,20 +1,23 @@
 import { useState } from 'react'
-import { checkLogin } from '../utils/auth'
+import { signInWithEmail } from '../utils/supabaseAuth'
 import { LOCATIONS } from '../data/constants'
 
 export default function SignIn({ onSuccess, onRegister, onBack }) {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    const account = checkLogin(username.trim(), password)
+    setLoading(true)
+    const { account, error } = await signInWithEmail(email, password)
+    setLoading(false)
     if (account) {
       onSuccess(account)
     } else {
-      setError('Incorrect username or password.')
+      setError(error || 'Incorrect email or password.')
     }
   }
 
@@ -52,12 +55,13 @@ export default function SignIn({ onSuccess, onRegister, onBack }) {
           >
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: 14 }}>
-                <label>Username</label>
+                <label>Email</label>
                 <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
-                  autoComplete="username"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   autoFocus
                   required
                 />
@@ -84,8 +88,9 @@ export default function SignIn({ onSuccess, onRegister, onBack }) {
                 type="submit"
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', padding: '10px 14px', fontSize: 14 }}
+                disabled={loading}
               >
-                Sign in
+                {loading ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
 
@@ -104,15 +109,6 @@ export default function SignIn({ onSuccess, onRegister, onBack }) {
               </button>
             </div>
 
-            {/* Default-admin hint — dev only. Strips out of any production
-                build via Vite's `import.meta.env.DEV` boolean, so the live
-                URL never discloses the seed credentials. */}
-            {import.meta.env.DEV && (
-              <div className="info-box" style={{ marginTop: 16 }}>
-                <strong>Dev only:</strong> default admin is{' '}
-                <strong>admin</strong> / <strong>aviation2026</strong>
-              </div>
-            )}
           </div>
         </div>
       </div>
