@@ -215,7 +215,9 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     style={{ width: '100%', textAlign: 'center', textAlignLast: 'center' }}
                   >
                     <option value="">— select instructor —</option>
-                    {instructors.map((i) => (
+                    {/* Dedupe by name: instructors at multiple bases appear
+                        once (avoids duplicate-key warnings + repeated names). */}
+                    {Array.from(new Map(instructors.map((i) => [i.name, i])).values()).map((i) => (
                       <option key={i.name} value={i.name}>{i.name}</option>
                     ))}
                   </select>

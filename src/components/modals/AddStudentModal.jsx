@@ -216,7 +216,8 @@ function InstructorSelect({ value, onChange, instructors }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: '100%' }}>
       <option value="">— select instructor —</option>
-      {instructors.map((i) => (
+      {/* Dedupe by name: instructors at multiple bases appear once. */}
+      {Array.from(new Map(instructors.map((i) => [i.name, i])).values()).map((i) => (
         <option key={i.name} value={i.name}>{i.name}  ({i.cert})</option>
       ))}
     </select>

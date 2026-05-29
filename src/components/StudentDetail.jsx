@@ -56,24 +56,49 @@ export default function StudentDetail({
   // entry is already there. Triggers only on the current course, not
   // while viewing past courses.
   useEffect(() => {
-    if (progress.pct < 100) return
     if (viewCourse !== student.course) return
-    const already = (student.courseHistory || []).some((h) => h.course === student.course)
-    if (already) return
+    const history = student.courseHistory || []
+    const selfIdx = history.findIndex((h) => h.course === student.course)
     const today = new Date().toISOString().slice(0, 10)
-    onUpdateStudent?.(student.id, {
-      courseHistory: [
-        ...(student.courseHistory || []),
-        {
-          course: student.course,
-          completedDate: today,
-          primaryInstructor: student.primaryInstructor,
-          secondaryInstructor: student.secondaryInstructor,
-        },
-      ],
-    })
-    // courseHistory included so a rapid 100→99→100 flip can re-check
-    // against the latest history and avoid double-archiving.
+
+    if (progress.pct >= 100) {
+      // Course is complete — make sure it's stamped completed.
+      if (selfIdx === -1) {
+        onUpdateStudent?.(student.id, {
+          courseHistory: [
+            ...history,
+            {
+              course: student.course,
+              completedDate: today,
+              primaryInstructor: student.primaryInstructor,
+              secondaryInstructor: student.secondaryInstructor,
+            },
+          ],
+        })
+      } else if (!history[selfIdx].completedDate) {
+        // Re-completed after a dip — restore the completed stamp.
+        const next = [...history]
+        next[selfIdx] = { ...next[selfIdx], completedDate: today }
+        onUpdateStudent?.(student.id, { courseHistory: next })
+      }
+    } else if (selfIdx !== -1) {
+      // Dropped back below 100% — it's no longer a completed record.
+      const entry = history[selfIdx]
+      const hasBillingData = entry.rateDiscount != null || entry.syllabusVersion || entry.libRepeatsAllowed != null
+      if (hasBillingData) {
+        // Keep the entry + its billing config; just clear the "completed" stamp.
+        if (entry.completedDate) {
+          const next = [...history]
+          next[selfIdx] = { ...entry, completedDate: null }
+          onUpdateStudent?.(student.id, { courseHistory: next })
+        }
+      } else {
+        // Bare auto-archive marker with no extra data — drop it entirely.
+        onUpdateStudent?.(student.id, { courseHistory: history.filter((_, i) => i !== selfIdx) })
+      }
+    }
+    // courseHistory included so a 100→99→100 flip re-checks against the
+    // latest history and self-corrects (add/clear/restore) without looping.
   }, [progress.pct, viewCourse, student.course, student.id, student.courseHistory, student.primaryInstructor, student.secondaryInstructor])
   // Per-lesson target dates — spread evenly between training start and the
   // effective deadline. Only meaningful when a deadline (pace or FSC) is
@@ -435,7 +460,9 @@ export default function StudentDetail({
                   so we suppress that history entry below to avoid showing
                   the same course twice in the dropdown). */}
               {(() => {
-                const completedSelf = (student.courseHistory || []).find((h) => h.course === student.course)
+                // Only tag "100%" when there's an actual completed stamp — a
+                // course edited back below 100% clears it (see effect above).
+                const completedSelf = (student.courseHistory || []).find((h) => h.course === student.course && h.completedDate)
                 return (
                   <option value={student.course}>
                     {student.course} (current{completedSelf ? ' · 100%' : ''})
@@ -452,7 +479,7 @@ export default function StudentDetail({
             </select>
             {isViewingPastCourse && (
               <span style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 12 }}>
-                Read-only · historical record
+                {progress.pct >= 100 ? 'Historical record' : 'Past course · not 100%'}
               </span>
             )}
             {isViewingPastCourse && isInstructor && (
