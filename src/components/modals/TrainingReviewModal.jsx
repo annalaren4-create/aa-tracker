@@ -36,7 +36,7 @@ import { useToast } from '../Toast'
  *      success toast, and add a Download link in the TR history list.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], oopFingerprint = '', onSaveReview, onClose }) {
+export default function TrainingReviewModal({ student, logs, instructors = [], oopLessons, policyViolations = [], lessonId = null, viewCourse, onSaveReview, onClose }) {
   const toast = useToast()
   const today = new Date().toISOString().slice(0, 10)
   const course = COURSES[student.course]
@@ -88,17 +88,6 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
   // Did we find the assigned chief in the roster, but they have no email?
   const ccChiefMissingEmail = !!(ccName && !ccChief && instructors.find((i) => eqName(i.name, ccName)))
 
-  // Soft pre-flight check used by Email & Print. Returns true if the user
-  // wants to continue despite missing signatures / printed names.
-  const confirmIfIncomplete = async () => {
-    const missing = []
-    if (!form.designeeSig)       missing.push('FTA designee signature')
-    if (!form.designeeSigName)   missing.push('FTA designee printed name')
-    if (!form.studentSig)        missing.push('student signature')
-    if (!form.studentSigName)    missing.push('student printed name')
-    if (missing.length === 0) return true
-    return await toast.confirm(`Missing: ${missing.join(', ')}.\n\nSend anyway?`)
-  }
 
   // Persist the current state of the form as a training-review record on
   // the student's profile. Used by both Email and Print actions so the
@@ -114,12 +103,11 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
       // for a finished course only show up while viewing that course in
       // the course-history switcher. Captured at save time so renaming the
       // current course later doesn't orphan old reviews.
-      courseName: student.course,
-      // Snapshot of the OOP-trigger fingerprint at save time. The
-      // "Training Review required" banner stays hidden as long as this
-      // matches the current fingerprint; the moment a new OOP repeat is
-      // logged the fingerprint changes and the banner returns.
-      oopFingerprint,
+      courseName: viewCourse || student.course,
+      // The specific lesson this review covers. The "Training Review
+      // required" banner + the lesson row's gate clear once a TR with this
+      // lessonId exists for the course.
+      lessonId,
       writtenBy: form.writtenBy,
       rationale: form.rationale,
       outcomes: form.outcomes,
@@ -132,8 +120,16 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
     })
   }
 
+  // Save the review to the student's record (the primary action). Used by
+  // the Save button and also fired by Email/Print so the record is always
+  // captured regardless of export path.
+  const handleSave = () => {
+    saveReview()
+    toast.success(`Training Review saved to ${student.name}'s record.`)
+    onClose?.()
+  }
+
   const handleEmail = async () => {
-    if (!(await confirmIfIncomplete())) return
     const ccList = baseChiefs.map((c) => c.email).filter(Boolean).join(',')
     const subject = `Training Review — ${student.name} — ${form.date}`
     const body = [
@@ -162,13 +158,14 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
       + `&subject=${encodeURIComponent(subject)}`
       + `&body=${encodeURIComponent(body)}`
     saveReview()
+    toast.success(`Training Review saved to ${student.name}'s record.`)
     window.location.href = mailto
     onClose?.()                                            // close popup once the email client has been kicked off
   }
 
   const handlePrint = async () => {
-    if (!(await confirmIfIncomplete())) return
     saveReview()
+    toast.success(`Training Review saved to ${student.name}'s record.`)
     window.print()
     onClose?.()                                            // close popup after print dialog returns
   }
@@ -178,7 +175,9 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
       <div className="modal tr-modal" style={{ maxWidth: 760 }}>
         <div className="modal-header no-print">
           <div>
-            <h2 style={{ fontSize: 15, fontWeight: 500 }}>Training Review</h2>
+            <h2 style={{ fontSize: 15, fontWeight: 500 }}>
+              Training Review{lessonId ? <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>· lesson {lessonId}</span> : null}
+            </h2>
             <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
               To: flightaffiliate@liberty.edu
               {ccChief && (
@@ -274,17 +273,18 @@ export default function TrainingReviewModal({ student, logs, instructors = [], o
         </div>
 
         <div className="modal-footer no-print">
-          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
           <button
             className="btn"
             onClick={handleEmail}
             title={baseChiefs.length > 0
-              ? `Sends to flightaffiliate@liberty.edu, CC: ${baseChiefs.map((c) => c.email).join(', ')}`
-              : 'Sends to flightaffiliate@liberty.edu (no chief email on file for this base)'}
+              ? `Saves + sends to flightaffiliate@liberty.edu, CC: ${baseChiefs.map((c) => c.email).join(', ')}`
+              : 'Saves + sends to flightaffiliate@liberty.edu (no chief email on file for this base)'}
           >
-            Email to Liberty
+            Save + Email to Liberty
           </button>
-          <button className="btn btn-primary" onClick={handlePrint}>Print</button>
+          <button className="btn" onClick={handlePrint}>Save + Print</button>
+          <button className="btn btn-primary" onClick={handleSave}>Save Training Review</button>
         </div>
       </div>
     </div>

@@ -12,7 +12,7 @@ import { useToast } from '../Toast'
  * substring match against the display `course` label so historical data
  * still surfaces correctly.
  */
-export default function TrainingReviewHistory({ student, viewCourse, canDelete = false, onDelete }) {
+export default function TrainingReviewHistory({ student, viewCourse, courseLabel, canDelete = false, onDelete }) {
   const toast = useToast()
   const all = student.trainingReviews || []
   const reviews = viewCourse
@@ -30,7 +30,7 @@ export default function TrainingReviewHistory({ student, viewCourse, canDelete =
     <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
         <h3 style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-          Training Review history ({reviews.length})
+          Training Reviews{courseLabel ? ` — ${courseLabel}` : ''} ({reviews.length})
         </h3>
         <span style={{ fontSize: 11, color: '#9ca3af' }}>Saved when a review is e-mailed or printed</span>
       </div>

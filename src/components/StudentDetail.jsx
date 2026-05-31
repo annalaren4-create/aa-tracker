@@ -19,7 +19,8 @@ export default function StudentDetail({
 }) {
   const toast = useToast()
   const [logLesson, setLogLesson] = useState(null)
-  const [showTR, setShowTR] = useState(false)
+  // Lesson id the Training Review modal is open for (null = closed).
+  const [trFor, setTrFor] = useState(null)
   const [ledgerMode, setLedgerMode] = useState(null)  // 'hours' | 'cost' | 'balance' | null
   const [showLegend, setShowLegend] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
@@ -214,7 +215,6 @@ export default function StudentDetail({
     return 'OOP'
   }
   const policyViolations = [...stageCheckLibViolations, ...extraLibViolations]
-  const hasTrTrigger = oopLessons.length > 0 || policyViolations.length > 0 || multiRepeatLessons.length > 0
 
   // Suppress the "Training Review required" banner once a TR has been
   // generated covering the current OOP state. The banner reappears the
@@ -225,33 +225,26 @@ export default function StudentDetail({
   // compare against the snapshot the latest TR saved when it was
   // generated. Different fingerprints → a new OOP exists that the TR
   // didn't cover → banner returns.
-  const oopFingerprint = (() => {
-    const parts = []
-    oopLessons.forEach((l)        => parts.push(`oop:${l.id}`))
-    policyViolations.forEach((l)  => parts.push(`viol:${l.id}`))
-    multiRepeatLessons.forEach((l) => {
-      parts.push(`multi:${l.id}:${repeatKeysFor(sLogs, l.id).length}`)
-    })
-    return parts.sort().join('|')
-  })()
-  const trCovered = (() => {
-    if (!oopFingerprint) return false
-    const courseTRs = (student.trainingReviews || []).filter((tr) =>
-      tr.courseName === viewCourse ||
-      (!tr.courseName && typeof tr.course === 'string' && tr.course.startsWith(viewCourse))
-    )
-    // Compare against the LATEST TR that carries a fingerprint snapshot.
-    // Pre-snapshot TRs (saved before this feature shipped) remain in the
-    // audit trail but never silence the banner — every chief gets prompted
-    // to generate a fresh TR for the current OOP state, which seeds a
-    // proper snapshot for next time.
-    const latestWithFp = courseTRs
-      .filter((tr) => !!tr.oopFingerprint)
-      .sort((a, b) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''))[0]
-    if (!latestWithFp) return false
-    return latestWithFp.oopFingerprint === oopFingerprint
-  })()
-  const needsTR = hasTrTrigger && !trCovered
+  // Per-lesson Training Review coverage. Each TR is linked to the specific
+  // lesson that triggered it (tr.lessonId). A trigger lesson is "covered"
+  // once a TR exists for it on this course — then its banner entry, row
+  // button, and status gate all clear. This replaces the old fingerprint
+  // snapshot, which was fragile and never reliably cleared the banner.
+  const trTriggerIds = [...new Set([
+    ...oopLessons.map((l) => l.id),
+    ...policyViolations.map((l) => l.id),
+    ...multiRepeatLessons.map((l) => l.id),
+  ])]
+  const trTriggerSet = new Set(trTriggerIds)
+  const trCoveredSet = new Set(
+    (student.trainingReviews || [])
+      .filter((tr) =>
+        tr.courseName === viewCourse ||
+        (!tr.courseName && typeof tr.course === 'string' && tr.course.startsWith(viewCourse))
+      )
+      .map((tr) => tr.lessonId)
+      .filter(Boolean)
+  )
 
   // Pace estimate: based on completed lessons per week since the student's first
   // logged flight. Returns null when there's not enough history to project (need
@@ -564,59 +557,24 @@ export default function StudentDetail({
         })()}
 
         {/* Training Review required banner */}
-        {needsTR && (
-          <div className="tr-banner no-print">
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#991b1b' }}>
-                ⚠ Training Review required
-              </div>
-              {oopLessons.length > 0 && (
-                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
-                  {oopLessons.length} out-of-pocket repeat{oopLessons.length === 1 ? '' : 's'} logged
-                  {' '}({oopLessons.map((l) => l.id).join(', ')}).
-                </div>
-              )}
-              {stageCheckLibViolations.length > 0 && (
-                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
-                  Stage check / progress check repeats must be out of pocket — fix:{' '}
-                  {stageCheckLibViolations.map((l) => l.id).join(', ')}
-                </div>
-              )}
-              {extraLibViolations.length > 0 && (
-                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
-                  Only 1 funded repeat allowed per course — these must be OOP:{' '}
-                  {extraLibViolations.map((l) => l.id).join(', ')}
-                </div>
-              )}
-              {multiRepeatLessons.length > 0 && (
-                <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 2 }}>
-                  Only the first repeat per lesson is funded — additional repeats are OOP on:{' '}
-                  {multiRepeatLessons.map((l) => l.id).join(', ')}
-                </div>
-              )}
-              <div style={{ fontSize: 12, color: '#7f1d1d', marginTop: 4 }}>
-                A signed TR must be e-mailed to flightaffiliate@liberty.edu.
-              </div>
-            </div>
-            {isInstructor && (
-              <button className="btn btn-primary" onClick={() => setShowTR(true)}>
-                Generate Training Review
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Training Review audit trail — scoped to the active course so
-            historical reviews stay attached to the course they were
-            written for. When the student moves to a new course, this
-            section clears out; toggling back to the past course via
-            "View past course" surfaces those reviews again. */}
-        <TrainingReviewHistory
-          student={student}
-          viewCourse={viewCourse}
-          canDelete={isInstructor}
-          onDelete={onDeleteTrainingReview ? (reviewId) => onDeleteTrainingReview(student.id, reviewId) : null}
-        />
+        {/* Saved Training Reviews — every review for this student, grouped by
+            course, shown at the top and visible to chiefs, instructors, and
+            the student. */}
+        {(() => {
+          const courseKey = (tr) => tr.courseName || (typeof tr.course === 'string' ? tr.course.replace(/\s*\(.*\)$/, '') : 'Other')
+          const courses = [...new Set((student.trainingReviews || []).map(courseKey))]
+          if (courses.length === 0) return null
+          return courses.map((c) => (
+            <TrainingReviewHistory
+              key={c}
+              student={student}
+              viewCourse={c}
+              courseLabel={c}
+              canDelete={isInstructor}
+              onDelete={onDeleteTrainingReview ? (reviewId) => onDeleteTrainingReview(student.id, reviewId) : null}
+            />
+          ))
+        })()}
 
         {/* Stats — Progress always shown. Est. cost + LU balance shown
             only to instructors. Out-of-pocket card appears for anyone
@@ -1119,16 +1077,17 @@ export default function StudentDetail({
         />
       )}
 
-      {showTR && (
+      {trFor !== null && (
         <TrainingReviewModal
           student={student}
           logs={sLogs}
           instructors={instructors}
           oopLessons={oopLessons}
           policyViolations={policyViolations}
-          oopFingerprint={oopFingerprint}
+          lessonId={trFor}
+          viewCourse={viewCourse}
           onSaveReview={onSaveTrainingReview}
-          onClose={() => setShowTR(false)}
+          onClose={() => setTrFor(null)}
         />
       )}
 
@@ -1140,6 +1099,12 @@ export default function StudentDetail({
           instructors={instructors}
           libRepeatUsedElsewhere={libRepeats.some((l) => l.id !== logLesson.lesson.id)}
           isRepeatAttempt={logLesson.key.includes('__r')}
+          // TR action (per Anna's design): when this row is the OOP repeat
+          // attempt of a trigger lesson, show a "Fill out Training Review"
+          // link in the modal. Clicking it hands off to the TR form.
+          showTrAction={logLesson.key.includes('__r') && trTriggerSet.has(logLesson.lesson.id)}
+          trDone={trCoveredSet.has(logLesson.lesson.id)}
+          onOpenTR={() => { const id = logLesson.lesson.id; setLogLesson(null); setTrFor(id) }}
           defaultInstructor={account?.role === 'instructor' || account?.role === 'chief' ? account?.name : undefined}
           defaultAircraft={student.aircraft}
           siblingLesson={logLesson.lesson?.combinableWith ? course.lessons.find((l) => l.id === logLesson.lesson.combinableWith) : null}

@@ -15,7 +15,7 @@ import { useToast } from '../Toast'
  * - XC / Hood / Night are tracked as REQUIREMENTS (shown above) but not entered
  *   per-lesson; they're considered met by completing the lesson per the syllabus.
  */
-export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCombined = false, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, defaultAircraft, onSave, onClear, onClose }) {
+export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCombined = false, existing = {}, instructors, libRepeatUsedElsewhere = false, isRepeatAttempt = false, isLastRepeat = false, defaultInstructor, defaultAircraft, showTrAction = false, trDone = false, onOpenTR, onSave, onClear, onClose }) {
   const toast = useToast()
   const hasExisting = existing && Object.keys(existing).length > 0
 
@@ -168,6 +168,35 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
 
         <div className="modal-body">
           <div style={{ display: 'grid', gap: 14 }}>
+
+            {/* Training Review action — only shown when this row is the OOP
+                repeat attempt of a trigger lesson. Either prompts to fill
+                one out (red) or confirms it's already on file (green). */}
+            {showTrAction && (
+              trDone ? (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 13, color: '#15803d', fontWeight: 600 }}>
+                    ✓ Training Review on file for this lesson
+                  </div>
+                  {onOpenTR && (
+                    <button type="button" className="btn btn-sm" onClick={onOpenTR}>
+                      View / Update TR
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
+                    ⚠ Out-of-pocket repeat — a Training Review is required
+                  </div>
+                  {onOpenTR && (
+                    <button type="button" className="btn btn-primary btn-sm" onClick={onOpenTR}>
+                      Fill out Training Review
+                    </button>
+                  )}
+                </div>
+              )
+            )}
 
             {/* Lesson requirements (read-only reference) */}
             <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 12px' }}>
