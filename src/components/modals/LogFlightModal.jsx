@@ -269,7 +269,14 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     type="number" step="0.1" min="0"
                     value={form.dualHrs}
                     onChange={(e) => set('dualHrs', e.target.value)}
-                    placeholder={tDual > 0 ? `e.g. ${tDual.toFixed(1)}` : isSimOnly ? `e.g. ${tSim.toFixed(1)}` : '0.0'}
+                    // Show the syllabus target as a hint on whichever field is
+                    // this lesson's expected default. Sim lessons hint on Dual
+                    // unless flagged simInstrFree (then the default is Solo).
+                    placeholder={
+                      tDual > 0
+                        ? `e.g. ${tDual.toFixed(1)}`
+                        : (isSimOnly && !lesson.simInstrFree ? `e.g. ${tSim.toFixed(1)}` : '0.0')
+                    }
                     title="Instructor present — billed at the instructor rate"
                   />
                 </div>
@@ -279,7 +286,13 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                     type="number" step="0.1" min="0"
                     value={form.soloHrs}
                     onChange={(e) => set('soloHrs', e.target.value)}
-                    placeholder={tSolo > 0 ? `e.g. ${tSolo.toFixed(1)}` : isSimOnly ? '0.0' : '0.0'}
+                    // Sim lessons flagged simInstrFree are meant to be flown
+                    // solo (no instructor), so the hint lands here.
+                    placeholder={
+                      tSolo > 0
+                        ? `e.g. ${tSolo.toFixed(1)}`
+                        : (isSimOnly && lesson.simInstrFree ? `e.g. ${tSim.toFixed(1)}` : '0.0')
+                    }
                     title="No instructor present — not billed for instructor time"
                   />
                 </div>
