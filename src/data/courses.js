@@ -141,7 +141,7 @@ export const COURSES = {
       { id: '5.5', d: 3.0, g: 0.7, t: 3.0, o: 'Power off/on & accel stall, steep turns, steep spiral, chandelle, lazy 8\'s, po 180, Short/soft TO/L\'s' },
       { id: '5.6', sm: 3.0, i: 0.6, t: 3.0, simInstrFree: true, o: 'Steep turns/spiral, chandelle, lazy 8\'s, sim instrument climb/descend turns & unusual att, po 180, 8\'s on pylon, Short/Soft TO/L\'s' },
       { id: '5.7', s: 3.0, t: 3.0, o: 'Power off/on stall, steep turns, steep spiral, chandelle, lazy 8\'s, 8\'s on pylon, po 180, Short/Soft TO/L\'s' },
-      { id: '5.8', d: 5.0, x: 5.0, t: 5.0, o: 'Pilotage/Dead reck, track VOR/GPS, one landing >50nm from departure airport, po 180, Short/soft TO/L\'s' },
+      { id: '5.8', d: 5.0, x: 5.0, g: 0.7, t: 5.0, o: 'Pilotage/Dead reck, track VOR/GPS, one landing >50nm from departure airport, po 180, Short/soft TO/L\'s' },
       { id: '5.9', d: 2.0, i: 0.5, g: 0.7, t: 2.0, o: 'Power off/on stall, steep turns, steep spiral, chandelle, lazy 8\'s, 8\'s on pylon, IR climb/descend turns & unusual att, po 180, Short/Soft TO/L\'s' },
       { id: '5A', d: 2.0, i: 0.5, g: 0.7, t: 2.0, sc: true, o: 'Stage Check: Slow flt, power off/on stall, steep turns, steep spiral, chandelle, lazy 8\'s, 8\'s on pylon, instrument climb/descend turns & unusual att, po 180, Short/Soft TO/L\'s' },
     ],
