@@ -67,7 +67,10 @@ function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, char
   cost += flightTime * luAircraftRate                  // aircraft at LU-covered rate
   cost += effDual    * flightIr                        // instructor on dual flight
   if (chargeSimDevice) cost += effSim * SIM_RATE       // Redbird device — skipped when course has unlimited-sim enrollment fee
-  cost += effSim     * flightIr                        // instructor present for sim (Part 141 sims are dual)
+  // Instructor on sim — Part 141 sims are nominally dual, but some courses
+  // (e.g. Comm 2) flag specific sim lessons as instructor-free per school
+  // policy. Those skip the instructor charge on sim hours.
+  if (!lesson.simInstrFree) cost += effSim * flightIr
   cost += ground     * groundRate                      // ground instruction
 
   // Per-student rate discount (e.g. spouse / family discount). Caller decides
