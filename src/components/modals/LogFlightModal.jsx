@@ -62,9 +62,18 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
     aircraft:    isSimOnly ? 'Redbird FMX' : (existing.aircraft || defaultAircraft || ''),
     // For mixed (dual + solo) lessons we collect Dual and Solo separately so the
     // instructor records what actually happened, not a proportional split.
-    flight:      existingFlight > 0 && !isMixed ? existingFlight.toString() : '',
-    dualHrs:     isMixed && existing.dual ? existing.dual.toString() : '',
-    soloHrs:     isMixed && existing.solo ? existing.solo.toString() : '',
+    // EVERY lesson collects Dual + Solo separately now. When editing an
+    // older sim log that has lg.sim (legacy field), migrate those hours
+    // into the right bucket so they aren't lost on save: into Solo when
+    // the lesson is flagged simInstrFree (instructor wasn't being billed),
+    // otherwise into Dual (instructor was). The user can adjust either.
+    flight:      '',
+    dualHrs:     existing.dual
+                   ? existing.dual.toString()
+                   : (isSimOnly && !lesson.simInstrFree && existing.sim ? existing.sim.toString() : ''),
+    soloHrs:     existing.solo
+                   ? existing.solo.toString()
+                   : (isSimOnly && lesson.simInstrFree && existing.sim ? existing.sim.toString() : ''),
     ground:      existing.ground      || '',
     completed:   existing.completed   || false,
     repeatedLib: existing.repeatedLib || false,
@@ -97,26 +106,16 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
     }
     setSaveErr('')
 
-    const flight = parseFloat(form.flight) || 0
     const ground = parseFloat(form.ground) || 0
 
-    // Allocate flight time into the lesson's billing buckets.
-    let dual = 0, solo = 0, sim = 0
-    if (isMixed) {
-      // Mixed lessons collect Dual and Solo as separate inputs so we record
-      // what actually happened rather than guessing a proportional split.
-      dual = parseFloat(form.dualHrs) || 0
-      solo = parseFloat(form.soloHrs) || 0
-    } else if (isSimOnly) {
-      sim = flight
-    } else if (tDual > 0) {
-      dual = flight
-    } else if (tSolo > 0) {
-      solo = flight
-    } else {
-      // Lesson has no flight target (e.g. ground-only) — default to dual to preserve old behavior
-      dual = flight
-    }
+    // Every lesson (plane or sim) collects Dual and Solo as separate
+    // inputs so we record what actually happened — even when the syllabus
+    // expected one or the other. Dual = instructor billed; Solo = not
+    // billed. lg.sim is no longer written for new entries; legacy logs
+    // that haven't been edited keep their lg.sim and bill as before.
+    const dual = parseFloat(form.dualHrs) || 0
+    const solo = parseFloat(form.soloHrs) || 0
+    const sim = 0
 
     // XC / Hood / Night targets carry over as the logged value (they're met by definition
     // when the lesson is flown, since they're sub-categories of the flight time).
@@ -258,26 +257,30 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
               </div>
             </div>
 
-            {/* Actual hours flown — split into Dual + Solo for mixed lessons so
-                the logbook & billing math get accurate per-bucket hours. */}
-            {isMixed ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {/* Actual hours flown — EVERY lesson (plane or sim) collects Dual
+                and Solo separately. Dual hours = instructor present (billed);
+                Solo hours = no instructor (not billed). The lesson type
+                determines the aircraft rate (sim = $90/hr, plane = its own
+                rate). Slip-ups in either direction get accurate billing. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div>
-                  <label>Dual time</label>
+                  <label>{isSimOnly ? 'Sim — dual time' : 'Dual time'}</label>
                   <input
                     type="number" step="0.1" min="0"
                     value={form.dualHrs}
                     onChange={(e) => set('dualHrs', e.target.value)}
-                    placeholder={`e.g. ${tDual.toFixed(1)}`}
+                    placeholder={tDual > 0 ? `e.g. ${tDual.toFixed(1)}` : isSimOnly ? `e.g. ${tSim.toFixed(1)}` : '0.0'}
+                    title="Instructor present — billed at the instructor rate"
                   />
                 </div>
                 <div>
-                  <label>Solo time</label>
+                  <label>{isSimOnly ? 'Sim — solo time' : 'Solo time'}</label>
                   <input
                     type="number" step="0.1" min="0"
                     value={form.soloHrs}
                     onChange={(e) => set('soloHrs', e.target.value)}
-                    placeholder={`e.g. ${tSolo.toFixed(1)}`}
+                    placeholder={tSolo > 0 ? `e.g. ${tSolo.toFixed(1)}` : isSimOnly ? '0.0' : '0.0'}
+                    title="No instructor present — not billed for instructor time"
                   />
                 </div>
                 <div>
@@ -299,28 +302,6 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="grid2">
-                <div>
-                  <label>{isSimOnly ? 'Sim time' : tSolo > 0 ? 'Solo flight time' : 'Flight time'}</label>
-                  <input
-                    type="number" step="0.1" min="0"
-                    value={form.flight}
-                    onChange={(e) => set('flight', e.target.value)}
-                    placeholder={tTotal > 0 ? `e.g. ${tTotal.toFixed(1)}` : 'e.g. 0.0'}
-                  />
-                </div>
-                <div>
-                  <label>Ground time</label>
-                  <input
-                    type="number" step="0.1" min="0"
-                    value={form.ground}
-                    onChange={(e) => set('ground', e.target.value)}
-                    placeholder={tGround > 0 ? `e.g. ${tGround.toFixed(1)}` : 'e.g. 0.0'}
-                  />
-                </div>
-              </div>
-            )}
 
             {/* Checkboxes — on a repeat attempt, hide the Lib/OOP boxes and offer
                 a "Repeat again" affordance instead so the instructor can chain

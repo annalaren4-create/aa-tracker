@@ -48,29 +48,36 @@ function lessonCost(lesson, dual, solo, sim, ground, aircraftRate, student, char
     : (instructorLineRate || rateOverrides.flight || instrRate(student.base, false))
   const groundRate = lesson.fsc ? FSC_INSTR_RATE : (rateOverrides.ground || GROUND_RATE)
 
-  // Redbird-only: lesson has sm but no d → ignore any logged dual entirely
-  const redbirdOnly  = !lesson.d && (lesson.sm || 0) > 0
-  const effDual = redbirdOnly ? 0 : dual
-  const effSim  = sim
+  // A "sim lesson" runs in the Redbird (lesson defines `sm` and no `d`).
+  // For sim lessons the dual/solo hours represent sim hours flown with /
+  // without an instructor; the "aircraft" is the sim device, so per-hour
+  // aircraft cost is SIM_RATE instead of the plane rate.
+  const isSimLesson = !lesson.d && (lesson.sm || 0) > 0
+  const effSim = sim                                   // legacy field (old logs may still set lg.sim)
 
-  const flightTime = effDual + solo
-  // Liberty pays the aircraft at the "least expensive approved" rate for the
-  // course. If the student flies a more expensive aircraft, the per-hour delta
-  // is OOP. Non-Liberty students just pay the full aircraft rate at LU bucket
-  // (oopAircraftSurcharge stays 0 because standardAircraftRate is undefined).
-  const luAircraftRate = (standardAircraftRate != null && standardAircraftRate < aircraftRate)
-    ? standardAircraftRate
-    : aircraftRate
-  const oopAircraftSurcharge = flightTime * Math.max(0, aircraftRate - luAircraftRate)
+  // Aircraft side. Sim lessons skip the LU/plane logic entirely — the sim
+  // device is a flat SIM_RATE/hr (chargeSimDevice respected for unlimited-
+  // sim enrollment).
+  const aircraftHrs = dual + solo
+  const luAircraftRate = isSimLesson
+    ? (chargeSimDevice ? SIM_RATE : 0)
+    : ((standardAircraftRate != null && standardAircraftRate < aircraftRate) ? standardAircraftRate : aircraftRate)
+  const oopAircraftSurcharge = isSimLesson
+    ? 0
+    : aircraftHrs * Math.max(0, aircraftRate - luAircraftRate)
+  // Kept for any downstream callers that still read flightTime.
+  const flightTime = aircraftHrs
 
   let cost = 0
-  cost += flightTime * luAircraftRate                  // aircraft at LU-covered rate
-  cost += effDual    * flightIr                        // instructor on dual flight
-  if (chargeSimDevice) cost += effSim * SIM_RATE       // Redbird device — skipped when course has unlimited-sim enrollment fee
-  // Instructor on sim — Part 141 sims are nominally dual, but some courses
-  // (e.g. Comm 2) flag specific sim lessons as instructor-free per school
-  // policy. Those skip the instructor charge on sim hours.
-  if (!lesson.simInstrFree) cost += effSim * flightIr
+  cost += aircraftHrs * luAircraftRate                 // aircraft (plane rate or sim device)
+  cost += dual        * flightIr                       // instructor — only on dual hours (solo never billed)
+  // Legacy lg.sim handling — old logs may still carry sim hours in their
+  // own bucket (before we unified dual/solo for sim lessons). Bill them
+  // under the old rules so historical costs don't shift retroactively.
+  if (effSim > 0) {
+    if (chargeSimDevice) cost += effSim * SIM_RATE     // Redbird device
+    if (!lesson.simInstrFree) cost += effSim * flightIr // instructor on legacy sim
+  }
   cost += ground     * groundRate                      // ground instruction
 
   // Per-student rate discount (e.g. spouse / family discount). Caller decides
