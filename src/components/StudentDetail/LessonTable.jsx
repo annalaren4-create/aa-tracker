@@ -288,8 +288,10 @@ export default function LessonTable({
             {(() => {
               const isLibRepeat = isRepeat && repeatBadge === 'Lib'
               const repeatDual  = course.repeatBufferDual ?? 2.0
-              const dualTgt = isSplit ? 0 : isLibRepeat ? repeatDual : (showLesson.d || showLesson.sm)
-              const soloTgt = isSplit ? 0 : isLibRepeat ? 0 : showLesson.s
+              // Sim hours display under Solo (not Dual) since they don't bill
+              // dual instructor time. Sim column still shows the same hours.
+              const dualTgt = isSplit ? 0 : isLibRepeat ? repeatDual : (showLesson.d || 0)
+              const soloTgt = isSplit ? 0 : isLibRepeat ? 0 : (showLesson.s || showLesson.sm || 0)
               const xcTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.x
               const iTgt    = isSplit ? 0 : isLibRepeat ? 0 : showLesson.i
               const smTgt   = isSplit ? 0 : isLibRepeat ? 0 : showLesson.sm
@@ -414,8 +416,8 @@ export default function LessonTable({
 
       {/* Totals row */}
       {(() => {
-        const targetDual = course.lessons.reduce((s,l) => s + (l.d  || l.sm || 0), 0)
-        const targetSolo = course.lessons.reduce((s,l) => s + (l.s  || 0), 0)
+        const targetDual = course.lessons.reduce((s,l) => s + (l.d  || 0), 0)
+        const targetSolo = course.lessons.reduce((s,l) => s + (l.s  || l.sm || 0), 0)
         const targetXC   = course.lessons.reduce((s,l) => s + (l.x  || 0), 0)
         const targetInst = course.lessons.reduce((s,l) => s + (l.i  || 0), 0)
         const targetSim  = course.lessons.reduce((s,l) => s + (l.sm || 0), 0)
