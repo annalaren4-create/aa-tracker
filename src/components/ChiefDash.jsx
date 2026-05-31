@@ -6,6 +6,7 @@ import ManageInstructorsModal from './modals/ManageInstructorsModal'
 import AccountSettingsModal from './modals/AccountSettingsModal'
 import TrainingReviewModal from './modals/TrainingReviewModal'
 import { eqName } from '../utils/storage'
+import { migrateLocalToCloud } from '../lib/supabaseData'
 import { paceStatus, effectiveDeadline, daysToEffectiveDeadline, flightsPerWeek, behindSchedule } from '../utils/terms'
 import { useToast } from './Toast'
 
@@ -72,6 +73,32 @@ export default function ChiefDash({
   logs = {},
 }) {
   const toast = useToast()
+  const [migrating, setMigrating] = useState(false)
+  // TEMPORARY: one-time push of localStorage data (students, course
+  // history, training reviews, flight logs) into Supabase. Removed once
+  // the migration is complete and verified.
+  const handleMigrate = async () => {
+    if (migrating) return
+    const ok = await toast.confirm(
+      `Push ${students.length} students and their logs to the cloud? This runs once and is skipped if the cloud already has students.`
+    )
+    if (!ok) return
+    setMigrating(true)
+    try {
+      const res = await migrateLocalToCloud({ students, logs }, account?.schoolId)
+      if (res.aborted) {
+        toast.info(res.message)
+      } else {
+        toast.success(`Migrated: ${res.studentCount} students, ${res.chCount} course-history, ${res.trCount} training reviews, ${res.logCount} flight logs.`)
+        if (res.warnings.length) console.warn('Migration warnings:', res.warnings)
+      }
+    } catch (e) {
+      console.error('Migration failed:', e)
+      toast.error('Migration failed — see console. Nothing was switched over; your local data is untouched.')
+    } finally {
+      setMigrating(false)
+    }
+  }
   const [showAdd, setShowAdd]               = useState(false)
   const [showManageInstr, setShowManageInstr] = useState(false)
   const [showAcctSettings, setShowAcctSettings] = useState(false)
@@ -265,6 +292,16 @@ export default function ChiefDash({
             title="Open a fresh Training Review form (no student data pre-filled) in case the original wasn't saved"
           >
             Blank TR
+          </button>
+          {/* TEMPORARY one-time data migration button (removed after import) */}
+          <button
+            className="btn btn-sm"
+            style={{ background: '#f59e0b', color: '#1a2230', fontWeight: 600 }}
+            onClick={handleMigrate}
+            disabled={migrating}
+            title="One-time: copy your students and logs into the cloud database"
+          >
+            {migrating ? 'Migrating…' : '☁ Migrate to cloud'}
           </button>
           {/* Visual separator before the low-frequency account actions */}
           <span style={{ width: 1, height: 22, background: 'rgba(255,255,255,.2)' }} />
