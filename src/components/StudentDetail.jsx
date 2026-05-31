@@ -33,7 +33,6 @@ export default function StudentDetail({
   const canEdit = isInstructor && !isViewingPastCourse
   const [editingDate, setEditingDate] = useState(null)
   const [editingAircraft, setEditingAircraft] = useState(false)
-  const [editingCourse, setEditingCourse] = useState(false)
   const [editingPrimary, setEditingPrimary] = useState(false)
   const [replaceCourseMode, setReplaceCourseMode] = useState(false)   // bottom "Replace syllabus" inline picker
   const [replaceCourseChoice, setReplaceCourseChoice] = useState('')
@@ -282,54 +281,11 @@ export default function StudentDetail({
           <div>
             <h1>{student.name}</h1>
             <small>
-              {/* Course name — click-to-edit for instructors/chiefs when
-                  viewing the CURRENT course. Lets them fix a wrong
-                  enrollment in seconds. Past courses (via the course
-                  selector) stay read-only since editing those would
-                  invalidate historical logs. */}
-              {canEdit && !isViewingPastCourse ? (
-                editingCourse ? (
-                  <select
-                    value={student.course}
-                    autoFocus
-                    onChange={(e) => {
-                      const next = e.target.value
-                      if (next !== student.course) {
-                        // Switching the current course: clear pace + FSC
-                        // dates because the new course gets its own
-                        // schedule. Existing logs under the old course
-                        // stay intact (auto-archive on 100% still works
-                        // if those logs would have hit that threshold).
-                        onUpdateStudent(student.id, {
-                          course: next,
-                          pace: null,
-                          accelerated: false,
-                          scheduledFsc: null,
-                          backupFsc: null,
-                        })
-                        setViewCourse(next)
-                      }
-                      setEditingCourse(false)
-                    }}
-                    onBlur={() => setEditingCourse(false)}
-                    style={{ fontSize: 12, padding: '1px 4px', borderRadius: 4, border: '1px solid rgba(255,255,255,.4)', background: '#1a3a5c', color: '#fff' }}
-                  >
-                    {Object.keys(COURSES).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span
-                    onClick={() => setEditingCourse(true)}
-                    style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,.5)', paddingBottom: 1 }}
-                    title="Click to change course"
-                  >
-                    {viewCourse} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginLeft: 5, fontWeight: 700 }}>▾</span>
-                  </span>
-                )
-              ) : (
-                viewCourse
-              )}
+              {/* Course name — display only. (The header dropdown was removed
+                  per Anna's request; use the "Replace syllabus" flow lower
+                  on the page if a student's enrollment really needs to
+                  change.) */}
+              {viewCourse}
               {' · '}{COURSES[viewCourse]?.avia} · {student.base} ·{' '}
               {isViewingPastCourse && <span style={{ background: 'rgba(255,255,255,.15)', padding: '1px 6px', borderRadius: 4, marginRight: 4 }}>past</span>}
               {isInstructor ? (
