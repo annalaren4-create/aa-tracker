@@ -362,23 +362,6 @@ export function calcProgress(student, logs, instructors = [], courseOverride) {
   }
 }
 
-/** Running over/under vs target hours */
-export function overUnder(student, logs, courseOverride) {
-  const activeCourse = courseOverride || student.course
-  const version = courseOverride ? syllabusVersionFor(student, activeCourse) : undefined
-  const course = getCourseDef(activeCourse, version)
-  if (!course) return 0
-  const sLogs = (logs[student.id] || {})[activeCourse] || {}
-  let actual = 0
-  const add = (lg) => { if (lg) actual += (lg.dual || 0) + (lg.solo || 0) + (lg.sim || 0) }
-  course.lessons.forEach((l) => {
-    add(sLogs[l.id])
-    splitKeysFor(sLogs, l.id).forEach((sk) => add(sLogs[sk]))
-    repeatKeysFor(sLogs, l.id).forEach((rk) => add(sLogs[rk]))
-  })
-  return parseFloat((actual - course.targetTotal).toFixed(1))
-}
-
 /** Budget percentage used (0-100), null if no flat rate */
 export function budgetPct(progress) {
   if (!progress.flatRate) return null

@@ -34,12 +34,9 @@ export default function LogFlightModal({ lesson, siblingLesson, siblingAlreadyCo
   const tGround = (lesson.g  || 0) + (sib?.g  || 0)
   const tTotal  = (lesson.t  || (tDual + tSolo + tSim)) + (sib ? (sib.t || ((sib.d||0)+(sib.s||0)+(sib.sm||0))) : 0)
 
-  // Determine lesson mode for the flight-time input
-  const isMixed = tDual > 0 && tSolo > 0           // both dual & solo (rare — e.g. Private 5.2/5.3)
+  // Sim-only lessons render slightly differently (different labels, sim-side
+  // billing) — the form itself always collects Dual + Solo + Ground now.
   const isSimOnly = tSim > 0 && tDual === 0 && tSolo === 0
-
-  // Pre-fill the flight inputs from any existing log
-  const existingFlight = (existing.dual || 0) + (existing.solo || 0) + (existing.sim || 0)
 
   // If the prefilled instructor matches a roster entry under a different
   // casing/spacing (e.g. logged-in as "anna herrington" but roster says "Anna

@@ -295,14 +295,17 @@ export default function App() {
     saveRoleRequests([...roleRequests, { ...req, id: uid(), requestedAt: new Date().toISOString() }])
     return true
   }
-  const resolveRoleRequest = (id, approve) => {
+  const resolveRoleRequest = async (id, approve) => {
     const req = roleRequests.find((r) => r.id === id)
     if (!req) return
     if (approve) {
-      // Apply the change via the cloud-backed updater (fire-and-forget;
-      // it updates local state optimistically and persists to Supabase).
-      if (req.field === 'chief')           updateInstructor(req.instructorName, req.base, { lineRate: 110 })
-      else if (req.field === 'stageCheck') updateInstructor(req.instructorName, req.base, { stageCheck: true })
+      // Apply the change via the cloud-backed updater. Await it so we
+      // only clear the request from the queue if it actually stuck — a
+      // failed Supabase write would otherwise lose the request silently.
+      let ok = true
+      if (req.field === 'chief')           ok = await updateInstructor(req.instructorName, req.base, { lineRate: 110 })
+      else if (req.field === 'stageCheck') ok = await updateInstructor(req.instructorName, req.base, { stageCheck: true })
+      if (!ok) return  // keep the request in the queue so the chief can retry
     }
     saveRoleRequests(roleRequests.filter((r) => r.id !== id))
   }
@@ -396,10 +399,12 @@ export default function App() {
   }
 
   // Update a specific instructor entry (identified by original name + base, since
-  // a person can appear at multiple bases as separate entries).
+  // a person can appear at multiple bases as separate entries). Returns true
+  // on success / false on failure so callers (e.g. resolveRoleRequest) can
+  // avoid clearing dependent state when the cloud write doesn't stick.
   const updateInstructor = async (origName, origBase, changes) => {
     const found = instructors.find((i) => i.name === origName && i.base === origBase)
-    if (!found) return
+    if (!found) return false
     // If the rename collides with another existing instructor at the same base, bail.
     if (changes.name || changes.base) {
       const targetName = changes.name ?? origName
@@ -407,17 +412,19 @@ export default function App() {
       const collision = instructors.find((i) =>
         i.name === targetName && i.base === targetBase && !(i.name === origName && i.base === origBase)
       )
-      if (collision) { toast.error(`${targetName} is already listed at ${targetBase}`); return }
+      if (collision) { toast.error(`${targetName} is already listed at ${targetBase}`); return false }
     }
     const merged = { ...found, ...changes }
     setInstructors((prev) => prev.map((i) => (i === found ? merged : i)))
     try {
       const saved = await updateInstructorRow(found.id, merged, currentAccount?.schoolId)
       setInstructors((prev) => prev.map((i) => (i.id === saved.id ? saved : i)))
+      return true
     } catch (e) {
       console.error('Update instructor failed:', e)
       toast.error('Could not save instructor changes to the cloud.')
       setInstructors((prev) => prev.map((i) => (i.id === found.id ? found : i))) // roll back
+      return false
     }
   }
 

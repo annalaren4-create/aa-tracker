@@ -116,9 +116,23 @@ export async function migrateLocalToCloud({ students = [], logs = {} }, schoolId
   }
   const asText = (v) => (v == null ? null : typeof v === 'string' ? v : JSON.stringify(v))
 
+  // On any mid-migration failure, wipe everything we just inserted so the
+  // duplicate-guard above doesn't block a retry. Safe because the guard
+  // ensured count was 0 at start — any students present now were inserted
+  // by THIS run. FK cascade removes course_history / training_reviews /
+  // flight_logs along with the students.
+  const rollback = async () => {
+    try {
+      await supabase.from('students').delete().eq('school_id', schoolId)
+    } catch (rb) {
+      console.error('Rollback after migration failure ALSO failed:', rb)
+    }
+  }
+
   const oldIdToNew = new Map()
   let studentCount = 0, chCount = 0, trCount = 0, logCount = 0
 
+  try {
   // Students (one at a time so we get a reliable old-id -> new-id mapping)
   for (const s of students) {
     const { data: ins, error } = await supabase.from('students').insert({
@@ -162,7 +176,6 @@ export async function migrateLocalToCloud({ students = [], logs = {} }, schoolId
         course_name: tr.courseName || null,
         lesson_id: tr.lessonId || null,
         date: tr.date || (tr.createdAt ? String(tr.createdAt).slice(0, 10) : new Date().toISOString().slice(0, 10)),
-        oop_fingerprint: tr.oopFingerprint || null,
         written_by_id: resolveInstr(tr.writtenBy, s.base),
         rationale: asText(tr.rationale),
         outcomes: asText(tr.outcomes),
@@ -217,4 +230,9 @@ export async function migrateLocalToCloud({ students = [], logs = {} }, schoolId
   // De-duplicate warnings for a cleaner summary.
   const uniqWarnings = [...new Set(warnings)]
   return { studentCount, chCount, trCount, logCount, warnings: uniqWarnings }
+  } catch (e) {
+    console.error('Migration failed mid-run; rolling back inserts...', e)
+    await rollback()
+    throw new Error(`Migration failed and was rolled back — cloud is clean, you can retry. (${e.message || e})`)
+  }
 }
